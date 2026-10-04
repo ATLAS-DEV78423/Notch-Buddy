@@ -293,3 +293,65 @@ Chaque jalon se termine par build + capture + comparaison aux références + com
 - Hidden = 0 % CPU ; compact < 3 % ; mémoire < 100 Mo.
 - La démo (⌃⌥⌘D) se filme d'une traite sans intervention.
 
+## 13. Mochi sur le bureau
+
+Mochi peut quitter l'island et vivre comme une icône flottante sur le bureau. Il conserve tout son comportement (tenue, émotes, suivi des yeux, danse) et réagit aux alertes.
+
+### Pose et panneau
+
+- **Panneau** : `NSPanel` borderless non-activating, niveau `.floating`, `collectionBehavior [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]`, taille 120 × 120 pt.
+- **Clics traversants** : `ignoresMouseEvents` activé par défaut ; désactivé à 60 Hz uniquement quand le curseur est sur le corps (rayon ≈ 24 % de la taille du panneau). Position bornée à `screen.visibleFrame` avec une marge de 24 pt.
+- Le panneau est toujours au niveau `.floating` — en dessous des panneaux de menu et de l'island, au-dessus des fenêtres normales.
+
+### Installation
+
+- **Depuis le glisser** : quand l'utilisateur lâche Mochi hors de la zone notch et hors de toute fenêtre, `IslandWindowController.finishDrag` cède le panneau fantôme au `DesktopMochiController`. Le panneau s'agrandit vers 120 × 120 (animation ressort ~0,25 s), son contenu remplacé par `DesktopBotView`. Son de bienvenue : `pop`. Atterrissage avec émote `happy`.
+- **Retour dans la zone notch** : lâcher dans le cadre du panneau island → Mochi retourne à la notch sans s'installer sur le bureau.
+- **Au démarrage** (si `UserDefaults["mochiOnDesktop"] == true`) : le greeting se joue normalement, puis à `greetComplete` un nouveau panneau part de la notch et vole vers la position sauvegardée (animation 0,45 s).
+
+### Interactions
+
+| Geste | Effet |
+|---|---|
+| Clic simple | Slap (`engine.slap()`) — différé de `NSEvent.doubleClickInterval` |
+| Double-clic | Annule le slap en attente ; vol vers la notch (`flyHome()`), island réapparaît |
+| Clic droit | Ouvre/ferme la garde-robe (`.openWardrobeFromDesktop`, sans `.hookExpand`) |
+| Glisser → zone notch | Vol vers la notch (`flyHome()`) |
+| Glisser → fenêtre (GitHub) | Attache le contexte, Mochi revient à sa position initiale, island ouvre `.prompt` |
+| Glisser → ailleurs | Repositionne le panneau (borné au `visibleFrame`) |
+
+### Personnage complet
+
+- Respiration, clignements, suivi des yeux depuis la position du panneau (pas depuis l'island).
+- Tenue : toujours celle de `state.resolvedOutfit` (main Mochi = toujours habillé).
+- Danse : mêmes règles que le mode compact (musique + intégration active + état autorisé).
+- 30 fps actif, 10 fps au repos (`TimelineView` adapte `minimumInterval` selon `isSleeping`).
+
+### Absences de la notch
+
+Quand `AppState.mochiOnDesktop == true`, `BotPlacement` masque le bonhomme de la notch (opacité 0, même règle que `isDraggingBot`).
+
+### Alertes
+
+Détection par `Publishers.CombineLatest($pendingApproval, $pendingQuestion)` — seules les transitions nil↔non-nil déclenchent l'action. La notification `.hookExpand` n'est pas utilisée (elle part aussi pour `.finished`, `.error`, le glisser de fichier, etc.).
+
+1. `pendingApproval` ou `pendingQuestion` passe à non-`nil` → émote `surprised` sur le Mochi du bureau.
+2. Après 0,45 s, `retractForAlert()` : le panneau vole vers la notch et se ferme ; `mochiOnDesktop` passe à `false` (le bonhomme de la notch réapparaît pour l'alerte) ; `UserDefaults["mochiOnDesktop"]` reste `true`.
+3. Quand `pendingApproval` **et** `pendingQuestion` sont tous deux `nil`, `launchFlyIfNeeded()` renvole Mochi vers la position sauvegardée après 0,6 s.
+4. Si l'alerte se résout pendant l'animation de retrait, le panneau ne s'ouvre pas sur la notch — Mochi repart directement vers le bureau.
+
+### `.finished`
+
+Émote `happy` (saut de joie) sur le Mochi du bureau. Détecté par `Publishers.CombineLatest($stateOverride, $tasks)` → `effectiveState` ; ne déclenche pas de retrait vers la notch.
+
+### Sommeil
+
+- 2 min sans activité d'agent ET souris à plus de 150 pt → `engine.setState(.sleeping)`, `TimelineView` passe à 10 fps.
+- Réveil à l'approche de la souris ou à la réception d'un événement d'agent.
+- Pause complète lors du sommeil écran (`NSWorkspace.screensDidSleepNotification`) ou du verrouillage de session (`com.apple.screenIsLocked`).
+
+### Persistance
+
+- Position et état sauvegardés dans `UserDefaults` (clés : `desktopMochiX`, `desktopMochiY`, `mochiOnDesktop`).
+- Position bornée au `visibleFrame` du meilleur écran disponible au chargement ; si aucun écran ne convient, coin bas-droit de l'écran principal avec 24 pt de marge.
+
