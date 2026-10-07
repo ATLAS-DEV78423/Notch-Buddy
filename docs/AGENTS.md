@@ -224,14 +224,20 @@ Hermes sessions surface as the `agent_hermes` pill.
 
 ```yaml
 hooks:
+  pre_llm_call:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_llm_call'
+      timeout: 10
   pre_tool_call:
     - matcher: "terminal|write_file|patch"
-      command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes pre_tool_call"
+      command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_tool_call'
       timeout: 130
   post_tool_call:
-    - command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes post_tool_call"
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes post_tool_call'
       timeout: 10
 ```
+
+Note the single-quoted YAML scalars: the command contains double quotes, so a
+double-quoted scalar would need escaping that is easy to get wrong.
 
 The event names above come from the Hermes v0.21.3 documentation, not from a local install. If `hermes hooks list` shows nothing after installing, check the event names first — Hermes silently skips an unrecognised one.
 
@@ -269,11 +275,20 @@ reports drift.
 
 | Hermes shell hook | Canonical event | Notes |
 |---|---|---|
-| `pre_tool_call` | `PreToolUse` | Approval-capable when `matcher` is set |
-| `post_tool_call` | `PostToolUse` | Display only |
+| `pre_llm_call` | `UserPromptSubmit` | Once per turn — puts the prompt in the ticker and sets `thinking` |
+| `pre_tool_call` | `PermissionRequest` | **Approval-capable.** `matcher` scopes it to the tools that change something |
+| `post_tool_call` | `PostToolUse` | Display only — sets `working` |
+
+`pre_tool_call` maps to `PermissionRequest` and **not** `PreToolUse`, and that is the
+whole reason Hermes gets real approvals. Hermes has no separate permission event: its
+`pre_tool_call` hook is the only thing that can stop a tool, so for the tools the
+`matcher` selects it *is* the permission gate. Mapping it to `PreToolUse` would leave
+the relay's `waits_for_answer` false, the relay would return immediately, and Allow/Deny
+from the island would never reach Hermes.
 
 **Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated).
-Hermes `pre_tool_call` fires for every tool, so Coucou gates only the tools named in `matcher`.
+The `matcher` is what keeps this usable: without it, `pre_tool_call` fires for every tool
+and you would approve every read.
 
 ## OpenCode (macOS, Windows, Linux)
 
