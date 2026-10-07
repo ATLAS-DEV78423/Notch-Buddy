@@ -2521,6 +2521,44 @@ def normalize_tool_fields(payload):
     if not payload.get('cwd') and payload.get('workdir'):
         payload['cwd'] = payload['workdir']
 
+def dialect_output(agent, decision):
+    """The exact stdout for (agent, decision), or None to print nothing.
+
+    Every agent reads a different receipt, so this is the one place that knows
+    the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
+    """
+    # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
+    # no re-ask path, so an unanswered request must block rather than fall silent.
+    if agent == 'hermes':
+        if decision in ('allow', 'always'):
+            return '{}'
+        if decision == 'deny':
+            return '{"action":"block","message":"Denied from Coucou"}'
+        return '{"action":"block","message":"Coucou: no answer — re-run to be asked again."}'
+
+    # Copilot and Muse take a plain permissionDecision.
+    if agent in ('copilot', 'muse'):
+        if decision in ('allow', 'always'):
+            return '{"permissionDecision": "allow"}'
+        if decision == 'deny':
+            return '{"permissionDecision": "deny"}'
+        return None
+
+    # Observational agents ignore stdout, but {} is the documented no-op.
+    if agent in ('gemini', 'antigravity', 'opencode'):
+        return '{}'
+
+    # Claude Code and Codex: wrapped decisions, silence means "ask in the terminal".
+    if decision in ('allow', 'always'):
+        return json.dumps({'hookSpecificOutput': {
+            'hookEventName': 'PermissionRequest',
+            'decision': {'behavior': 'allow'}}})
+    if decision == 'deny':
+        return json.dumps({'hookSpecificOutput': {
+            'hookEventName': 'PermissionRequest',
+            'decision': {'behavior': 'deny', 'message': 'Denied from Coucou'}}})
+    return None
+
 def main():
     raw = b''
     payload = {}
@@ -2687,37 +2725,24 @@ def main():
                     decision = resp_obj.get('permissionDecision', '')
                 except Exception:
                     decision = ''
-                if decision in ('allow', 'always'):
-                    # Copilot/Muse use {"permissionDecision":"allow"} directly
-                    if agent in ('copilot', 'muse'):
-                        out = {'permissionDecision': 'allow'}
-                    elif decision == 'always' and agent != 'codex':
-                        # Let Claude Code persist the rule via updatedPermissions
-                        suggestions = payload.get('permission_suggestions', [])
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow', 'updatedPermissions': suggestions}}}
-                    else:
-                        # Claude Code / Codex plain allow
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow'}}}
-                    sys.stdout.write(json.dumps(out) + '\\n')
-                    sys.stdout.flush()
-                    sys.exit(0)
-                elif decision == 'deny':
-                    if agent in ('copilot', 'muse'):
-                        out = {'permissionDecision': 'deny'}
-                    else:
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'deny', 'message': 'Denied from Coucou'}}}
-                    sys.stdout.write(json.dumps(out) + '\\n')
-                    sys.stdout.flush()
-                    sys.exit(0)
-                elif decision == 'answer':
+                if decision == 'answer':
                     # AskUserQuestion answered from the notch
                     answers = resp_obj.get('answers', {})
                     questions = payload.get('tool_input', {}).get('questions', [])
-                    out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow', 'updatedInput': {'questions': questions, 'answers': answers}}}}
+                    out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest',
+                           'decision': {'behavior': 'allow',
+                                        'updatedInput': {'questions': questions,
+                                                         'answers': answers}}}}
                     sys.stdout.write(json.dumps(out) + '\\n')
                     sys.stdout.flush()
                     sys.exit(0)
-                # 'ask' or unknown: fall through → no output → agent re-asks
+                else:
+                    text = dialect_output(agent, decision)
+                    if text is not None:
+                        sys.stdout.write(text + '\\n')
+                        sys.stdout.flush()
+                        sys.exit(0)
+                # 'ask' or unknown: no output → the agent re-asks in its terminal.
         except Exception:
             pass
         # App unreachable, timed out, or no explicit decision — print nothing
@@ -2742,11 +2767,12 @@ def main():
         sys.stdout.write('{}\\n')
         sys.stdout.flush()
 
-try:
-    main()
-except Exception:
-    pass
-sys.exit(0)
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception:
+        pass
+    sys.exit(0)
 """
 
 // MARK: - nb-hook Python relay (App Store — socket in sandboxed container)
@@ -2812,6 +2838,44 @@ def normalize_tool_fields(payload):
     # Copilot sends workdir for the current working directory
     if not payload.get('cwd') and payload.get('workdir'):
         payload['cwd'] = payload['workdir']
+
+def dialect_output(agent, decision):
+    """The exact stdout for (agent, decision), or None to print nothing.
+
+    Every agent reads a different receipt, so this is the one place that knows
+    the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
+    """
+    # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
+    # no re-ask path, so an unanswered request must block rather than fall silent.
+    if agent == 'hermes':
+        if decision in ('allow', 'always'):
+            return '{}'
+        if decision == 'deny':
+            return '{"action":"block","message":"Denied from Coucou"}'
+        return '{"action":"block","message":"Coucou: no answer — re-run to be asked again."}'
+
+    # Copilot and Muse take a plain permissionDecision.
+    if agent in ('copilot', 'muse'):
+        if decision in ('allow', 'always'):
+            return '{"permissionDecision": "allow"}'
+        if decision == 'deny':
+            return '{"permissionDecision": "deny"}'
+        return None
+
+    # Observational agents ignore stdout, but {} is the documented no-op.
+    if agent in ('gemini', 'antigravity', 'opencode'):
+        return '{}'
+
+    # Claude Code and Codex: wrapped decisions, silence means "ask in the terminal".
+    if decision in ('allow', 'always'):
+        return json.dumps({'hookSpecificOutput': {
+            'hookEventName': 'PermissionRequest',
+            'decision': {'behavior': 'allow'}}})
+    if decision == 'deny':
+        return json.dumps({'hookSpecificOutput': {
+            'hookEventName': 'PermissionRequest',
+            'decision': {'behavior': 'deny', 'message': 'Denied from Coucou'}}})
+    return None
 
 def main():
     raw = b''
@@ -2978,37 +3042,24 @@ def main():
                     decision = resp_obj.get('permissionDecision', '')
                 except Exception:
                     decision = ''
-                if decision in ('allow', 'always'):
-                    # Copilot/Muse use {"permissionDecision":"allow"} directly
-                    if agent in ('copilot', 'muse'):
-                        out = {'permissionDecision': 'allow'}
-                    elif decision == 'always' and agent != 'codex':
-                        # Let Claude Code persist the rule via updatedPermissions
-                        suggestions = payload.get('permission_suggestions', [])
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow', 'updatedPermissions': suggestions}}}
-                    else:
-                        # Claude Code / Codex plain allow
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow'}}}
-                    sys.stdout.write(json.dumps(out) + '\\n')
-                    sys.stdout.flush()
-                    sys.exit(0)
-                elif decision == 'deny':
-                    if agent in ('copilot', 'muse'):
-                        out = {'permissionDecision': 'deny'}
-                    else:
-                        out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'deny', 'message': 'Denied from Coucou'}}}
-                    sys.stdout.write(json.dumps(out) + '\\n')
-                    sys.stdout.flush()
-                    sys.exit(0)
-                elif decision == 'answer':
+                if decision == 'answer':
                     # AskUserQuestion answered from the notch
                     answers = resp_obj.get('answers', {})
                     questions = payload.get('tool_input', {}).get('questions', [])
-                    out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest', 'decision': {'behavior': 'allow', 'updatedInput': {'questions': questions, 'answers': answers}}}}
+                    out = {'hookSpecificOutput': {'hookEventName': 'PermissionRequest',
+                           'decision': {'behavior': 'allow',
+                                        'updatedInput': {'questions': questions,
+                                                         'answers': answers}}}}
                     sys.stdout.write(json.dumps(out) + '\\n')
                     sys.stdout.flush()
                     sys.exit(0)
-                # 'ask' or unknown: fall through → no output → agent re-asks
+                else:
+                    text = dialect_output(agent, decision)
+                    if text is not None:
+                        sys.stdout.write(text + '\\n')
+                        sys.stdout.flush()
+                        sys.exit(0)
+                # 'ask' or unknown: no output → the agent re-asks in its terminal.
         except Exception:
             pass
         # App unreachable, timed out, or no explicit decision — print nothing
@@ -3032,9 +3083,10 @@ def main():
         sys.stdout.write('{}\\n')
         sys.stdout.flush()
 
-try:
-    main()
-except Exception:
-    pass
-sys.exit(0)
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception:
+        pass
+    sys.exit(0)
 """
