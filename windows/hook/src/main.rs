@@ -45,11 +45,12 @@ mod unix;
 use unix::connect;
 
 fn main() {
-    let Some((payload, event)) = read_event() else { std::process::exit(0) };
+    let Some((payload, event, agent_name)) = read_event() else { std::process::exit(0) };
 
     let waits_for_answer = event == "PermissionRequest";
     let budget = if waits_for_answer { DECISION_BUDGET } else { FIRE_AND_FORGET_BUDGET };
 
+    let dialect = dialect_for(&agent_name);
     // The worker owns every blocking call. If it overruns the budget we simply
     // stop listening and exit: the process dying takes the pipe handle with it.
     // (No catch_unwind here — the release profile is panic = "abort", so it would
@@ -59,35 +60,89 @@ fn main() {
         let _ = tx.send(talk(&payload, waits_for_answer));
     });
 
-    if let Ok(Some(decision)) = rx.recv_timeout(budget) {
-        if let Some(json) = decision_json(&decision) {
-            let mut out = std::io::stdout();
-            let _ = writeln!(out, "{json}");
-            let _ = out.flush();
-        }
+    // `Ok(Some(decision))` = a human decided. `Ok(None)` = Coucou answered without a
+    // decision, or was never reachable. `Err(_)` = the budget ran out with Coucou
+    // still holding the request, i.e. nobody clicked.
+    let receipt = match rx.recv_timeout(budget) {
+        Ok(Some(decision)) => decision_json(dialect, &decision),
+        Ok(None) => None,
+        Err(_) if waits_for_answer => no_answer_json(dialect),
+        Err(_) => None,
+    };
+    if let Some(json) = receipt {
+        let mut out = std::io::stdout();
+        let _ = writeln!(out, "{json}");
+        let _ = out.flush();
     }
-    // Nothing printed: Claude Code asks in the terminal, as if we were not here.
+    // Nothing printed: the agent carries on exactly as if we were not here.
     std::process::exit(0);
 }
 
-/// The documented PermissionRequest output. Anything we do not recognise prints
-/// nothing at all rather than guessing — silence is the safe answer.
-/// See https://code.claude.com/docs/en/hooks
-fn decision_json(decision: &str) -> Option<String> {
-    let behavior = match decision.trim() {
-        // "always" still answers a plain allow; remembering it is the island's
-        // business, not Claude Code's.
-        "allow" | "always" => r#"{"behavior":"allow"}"#.to_string(),
-        "deny" => r#"{"behavior":"deny","message":"Denied from Coucou"}"#.to_string(),
-        _ => return None,
-    };
-    Some(format!(
-        r#"{{"hookSpecificOutput":{{"hookEventName":"PermissionRequest","decision":{behavior}}}}}"#
-    ))
+/// Which receipt shape the calling agent understands.
+///
+/// The relay is one binary shared by every agent; only the stdout contract differs.
+/// Adding an agent means adding an arm here, not a new binary.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Dialect {
+    /// Claude Code, Codex, and every observational agent (Gemini, Copilot, Muse,
+    /// OpenCode). Observational agents ignore stdout entirely.
+    Claude,
+    /// Hermes reads `{"action":"block","message":…}` to stop a tool, `{}` to let it run.
+    Hermes,
 }
 
-/// Reads stdin and returns the payload to forward plus the event name.
-fn read_event() -> Option<(String, String)> {
+fn dialect_for(agent: &str) -> Dialect {
+    match agent {
+        "hermes" => Dialect::Hermes,
+        _ => Dialect::Claude,
+    }
+}
+
+/// The receipt for a decision the human actually made.
+/// `None` means print nothing — silence is the safe answer for an unknown decision.
+fn decision_json(dialect: Dialect, decision: &str) -> Option<String> {
+    match dialect {
+        Dialect::Hermes => match decision.trim() {
+            // "always" is an island concept; Hermes just gets a plain allow.
+            "allow" | "always" => Some("{}".to_string()),
+            "deny" => Some(
+                r#"{"action":"block","message":"Denied from Coucou"}"#.to_string(),
+            ),
+            _ => None,
+        },
+        Dialect::Claude => {
+            let behavior = match decision.trim() {
+                "allow" | "always" => r#"{"behavior":"allow"}"#.to_string(),
+                "deny" => {
+                    r#"{"behavior":"deny","message":"Denied from Coucou"}"#.to_string()
+                }
+                _ => return None,
+            };
+            Some(format!(
+                r#"{{"hookSpecificOutput":{{"hookEventName":"PermissionRequest","decision":{behavior}}}}}"#
+            ))
+        }
+    }
+}
+
+/// The receipt for "Coucou was reachable, the human never answered."
+///
+/// Claude Code gets silence and re-asks in the terminal. Hermes has no re-ask
+/// path, so silence would be a silent allow — it gets an explicit block instead.
+/// A closed Coucou never reaches here: `connect()` fails and we exit 0 with
+/// nothing printed, which is Hermes' fail-open default.
+fn no_answer_json(dialect: Dialect) -> Option<String> {
+    match dialect {
+        Dialect::Hermes => Some(
+            r#"{"action":"block","message":"Coucou: no answer — re-run to be asked again."}"#
+                .to_string(),
+        ),
+        Dialect::Claude => None,
+    }
+}
+
+/// Reads stdin and returns the payload to forward, the event name, and the agent.
+fn read_event() -> Option<(String, String, String)> {
     let mut raw = Vec::new();
     if std::io::stdin().read_to_end(&mut raw).is_err() || raw.is_empty() {
         return None;
@@ -118,7 +173,7 @@ fn read_event() -> Option<(String, String)> {
     // Which agent this hook was installed for. Absent means Claude Code,
     // so existing hook commands keep working unchanged.
     if !agent.is_empty() {
-        map.insert("coucou_agent".into(), serde_json::Value::String(agent));
+        map.insert("coucou_agent".into(), serde_json::Value::String(agent.clone()));
     }
     let event = map
         .get("hook_event_name")
@@ -165,7 +220,7 @@ fn read_event() -> Option<(String, String)> {
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some((line, event))
+    Some((line, event, agent))
 }
 
 /// Caps every string in the payload. A single Write can carry a whole file.
@@ -226,23 +281,23 @@ mod tests {
     #[test]
     fn decision_json_matches_the_documented_shape() {
         assert_eq!(
-            decision_json("allow").unwrap(),
+            decision_json(Dialect::Claude, "allow").unwrap(),
             r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#
         );
         assert_eq!(
-            decision_json("deny").unwrap(),
+            decision_json(Dialect::Claude, "deny").unwrap(),
             r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Coucou"}}}"#
         );
         // "always" is an island concept; Claude Code just gets an allow.
-        assert!(decision_json("always").unwrap().contains(r#""behavior":"allow""#));
+        assert!(decision_json(Dialect::Claude, "always").unwrap().contains(r#""behavior":"allow""#));
     }
 
     #[test]
     fn anything_unrecognised_prints_nothing() {
-        assert!(decision_json("").is_none());
-        assert!(decision_json("maybe").is_none());
+        assert!(decision_json(Dialect::Claude, "").is_none());
+        assert!(decision_json(Dialect::Claude, "maybe").is_none());
         // The shape the app used to send must not be mistaken for a decision.
-        assert!(decision_json(r#"{"permissionDecision":"allow"}"#).is_none());
+        assert!(decision_json(Dialect::Claude, r#"{"permissionDecision":"allow"}"#).is_none());
     }
 
     #[test]
@@ -252,5 +307,45 @@ mod tests {
         let s = v["tool_input"]["content"].as_str().unwrap();
         assert!(s.len() <= MAX_FIELD_LEN + 4);
         assert!(s.ends_with('…'));
+    }
+
+    #[test]
+    fn hermes_speaks_its_own_receipt_shape() {
+        assert_eq!(dialect_for("hermes"), Dialect::Hermes);
+        assert_eq!(dialect_for("opencode"), Dialect::Claude);
+        assert_eq!(dialect_for("claude"), Dialect::Claude);
+
+        // Allow is an empty object: Hermes reads that as "no objection".
+        assert_eq!(decision_json(Dialect::Hermes, "allow").unwrap(), "{}");
+        assert_eq!(decision_json(Dialect::Hermes, "always").unwrap(), "{}");
+        assert_eq!(
+            decision_json(Dialect::Hermes, "deny").unwrap(),
+            r#"{"action":"block","message":"Denied from Coucou"}"#
+        );
+        // Anything unrecognised prints nothing at all.
+        assert!(decision_json(Dialect::Hermes, "maybe").is_none());
+    }
+
+    #[test]
+    fn hermes_blocks_when_the_human_never_answered() {
+        // Coucou was reachable but nobody clicked. Silence here would be a silent
+        // allow, which is worse than not having Coucou installed.
+        let out = no_answer_json(Dialect::Hermes).unwrap();
+        assert!(out.contains(r#""action":"block""#));
+        assert!(out.contains("no answer"));
+        // Claude Code's fallback is silence: the terminal asks instead.
+        assert!(no_answer_json(Dialect::Claude).is_none());
+    }
+
+    #[test]
+    fn claude_receipts_are_unchanged() {
+        assert_eq!(
+            decision_json(Dialect::Claude, "allow").unwrap(),
+            r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#
+        );
+        assert_eq!(
+            decision_json(Dialect::Claude, "deny").unwrap(),
+            r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Coucou"}}}"#
+        );
     }
 }
