@@ -232,3 +232,86 @@ echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","
 ```
 
 A "demo" pill should appear in the island.
+
+## Hermes Agent (macOS, Windows, Linux)
+
+Hermes runs shell hooks declared in `~/.hermes/config.yaml`, under a top-level `hooks:` key
+(sibling of `model:`). Coucou points those entries straight at its relay — no wrapper script.
+Hermes sessions surface as the `agent_hermes` pill.
+
+```yaml
+hooks:
+  pre_tool_call:
+    - matcher: "terminal|write_file|patch"
+      command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes pre_tool_call"
+      timeout: 130
+  post_tool_call:
+    - command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes post_tool_call"
+      timeout: 10
+```
+
+The event names above come from the Hermes v0.21.3 documentation, not from a local install. If `hermes hooks list` shows nothing after installing, check the event names first — Hermes silently skips an unrecognised one.
+
+macOS uses `/bin/sh "<Application Support>/NotchBuddy/nb-hook" --agent hermes <event>` instead.
+
+**Hermes reads a JSON receipt on stdout.** Coucou answers with the exact same bytes on
+macOS and Windows — the two relays assert the identical string so they cannot drift:
+
+| Decision | Receipt |
+|---|---|
+| Allow | `{}` |
+| Deny | `{"action":"block","message":"Denied from Coucou"}` |
+| Coucou open, no answer within 110 s | `{"action":"block","message":"Coucou: no answer — re-run to be asked again."}` |
+| Coucou not running | *nothing printed* — Hermes proceeds |
+
+That last row is why Coucou does **not** set `fail_closed: true`: fail-open is what keeps the
+promise that a closed Coucou never blocks your agent. The timeout row is why a timeout denies
+instead of silently allowing.
+
+**Consent.** Hermes will not run a shell hook until you approve that exact `(event, command)`
+pair, recorded in `~/.hermes/shell-hooks-allowlist.json`. Until then the hook is silently
+skipped — `hermes hooks list` shows `✗ not allowlisted`. Approve with one of:
+
+```bash
+hermes --accept-hooks chat        # one-off CLI flag
+export HERMES_ACCEPT_HOOKS=1      # environment variable
+```
+
+or set `hooks_auto_accept: true` in `~/.hermes/config.yaml`.
+
+Changing the relay path changes the command string and therefore re-prompts. `hermes hooks doctor`
+reports drift.
+
+**Event map**
+
+| Hermes shell hook | Canonical event | Notes |
+|---|---|---|
+| `pre_tool_call` | `PreToolUse` | Approval-capable when `matcher` is set |
+| `post_tool_call` | `PostToolUse` | Display only |
+
+**Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated).
+Hermes `pre_tool_call` fires for every tool, so Coucou gates only the tools named in `matcher`.
+
+## OpenCode (macOS, Windows, Linux)
+
+Coucou installs one generated plugin at `~/.config/opencode/plugins/coucou.js` — the same
+XDG path on every platform, which is why OpenCode works on Windows unlike Amp.
+
+The plugin forwards display events fire-and-forget: it spawns the Coucou relay, writes one
+JSON line, and returns without waiting. OpenCode is never slowed down.
+
+**OpenCode permissions are display-only.** OpenCode exposes `permission.asked` as an
+*observable event*, not as a hook that can return a decision, so Coucou cannot answer it.
+The permission is surfaced in the ticker as a question and the card reads
+`Handled in OpenCode.` — answer it in your terminal.
+
+| OpenCode event | Canonical event |
+|---|---|
+| `session.created` | `SessionStart` |
+| `session.idle` | `Stop` |
+| `session.error` | `StopFailure` |
+| `session.deleted` | `SessionEnd` |
+| `session.diff` | `PostToolUse` (carries the diff) |
+| `permission.asked` | `Notification` (`Allow <tool>?`) |
+| `tool.execute.before` | `PreToolUse` |
+| `tool.execute.after` | `PostToolUse` |
