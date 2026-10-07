@@ -2604,6 +2604,14 @@ def normalize_event(name):
         'agentStop': 'Stop', 'notification': 'Notification',
         'preToolUse': 'PreToolUse', 'postToolUse': 'PostToolUse',
         'permissionRequest': 'PermissionRequest', 'sessionEnd': 'SessionEnd',
+        # Hermes Agent shell hooks. Hermes has no permission event of its own, so
+        # `pre_tool_call` *is* the gate: it maps to `PermissionRequest`, not
+        # `PreToolUse`. Mapping it to `PreToolUse` would leave the relay's
+        # `waits_for_answer` false, so the relay would never wait and Allow/Deny
+        # from the island would be unreachable.
+        'pre_llm_call': 'UserPromptSubmit',
+        'pre_tool_call': 'PermissionRequest',
+        'post_tool_call': 'PostToolUse',
     }
     return mapping.get(name, name)
 
@@ -2876,6 +2884,18 @@ def main():
                         sys.stdout.flush()
                         sys.exit(0)
                 # 'ask' or unknown: no output → the agent re-asks in its terminal.
+            else:
+                # Coucou was reachable but never answered: its own safety timeout
+                # fired, or the connection dropped without a decision. Hermes has no
+                # re-ask path, so silence here would be a silent allow — block it
+                # instead. Claude Code and the observational agents print nothing and
+                # re-ask in their own terminal.
+                text = dialect_output(agent, 'ask',
+                                      payload.get('permission_suggestions', []))
+                if text is not None:
+                    sys.stdout.write(text + '\\n')
+                    sys.stdout.flush()
+                    sys.exit(0)
         except Exception:
             pass
         # App unreachable, timed out, or no explicit decision — print nothing
@@ -2930,6 +2950,14 @@ def normalize_event(name):
         'agentStop': 'Stop', 'notification': 'Notification',
         'preToolUse': 'PreToolUse', 'postToolUse': 'PostToolUse',
         'permissionRequest': 'PermissionRequest', 'sessionEnd': 'SessionEnd',
+        # Hermes Agent shell hooks. Hermes has no permission event of its own, so
+        # `pre_tool_call` *is* the gate: it maps to `PermissionRequest`, not
+        # `PreToolUse`. Mapping it to `PreToolUse` would leave the relay's
+        # `waits_for_answer` false, so the relay would never wait and Allow/Deny
+        # from the island would be unreachable.
+        'pre_llm_call': 'UserPromptSubmit',
+        'pre_tool_call': 'PermissionRequest',
+        'post_tool_call': 'PostToolUse',
     }
     return mapping.get(name, name)
 
@@ -3201,6 +3229,18 @@ def main():
                         sys.stdout.flush()
                         sys.exit(0)
                 # 'ask' or unknown: no output → the agent re-asks in its terminal.
+            else:
+                # Coucou was reachable but never answered: its own safety timeout
+                # fired, or the connection dropped without a decision. Hermes has no
+                # re-ask path, so silence here would be a silent allow — block it
+                # instead. Claude Code and the observational agents print nothing and
+                # re-ask in their own terminal.
+                text = dialect_output(agent, 'ask',
+                                      payload.get('permission_suggestions', []))
+                if text is not None:
+                    sys.stdout.write(text + '\\n')
+                    sys.stdout.flush()
+                    sys.exit(0)
         except Exception:
             pass
         # App unreachable, timed out, or no explicit decision — print nothing

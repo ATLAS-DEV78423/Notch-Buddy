@@ -300,8 +300,7 @@ JSON line, and returns without waiting. OpenCode is never slowed down.
 
 **OpenCode permissions are display-only.** OpenCode exposes `permission.asked` as an
 *observable event*, not as a hook that can return a decision, so Coucou cannot answer it.
-The permission is surfaced in the ticker as a question and the card reads
-`Handled in OpenCode.` — answer it in your terminal.
+The permission is surfaced as a question in the ticker — answer it in OpenCode's terminal.
 
 | OpenCode event | Canonical event |
 |---|---|

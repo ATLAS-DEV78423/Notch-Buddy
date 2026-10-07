@@ -56,17 +56,16 @@ fn main() {
     // stop listening and exit: the process dying takes the pipe handle with it.
     // (No catch_unwind here — the release profile is panic = "abort", so it would
     // be dead code. `talk` is written to have nothing to panic on instead.)
-    let (tx, rx) = mpsc::channel::<Option<String>>();
+    let (tx, rx) = mpsc::channel::<Talk>();
     std::thread::spawn(move || {
         let _ = tx.send(talk(&payload, waits_for_answer));
     });
 
-    // `Ok(Some(decision))` = a human decided. `Ok(None)` = Coucou answered without a
-    // decision, or was never reachable. `Err(_)` = the budget ran out with Coucou
-    // still holding the request, i.e. nobody clicked.
+    // `Err(_)` = the budget ran out with Coucou still holding the request, i.e.
+    // nobody clicked while the card was up. Everything else is decided by what the
+    // worker reported: a decision, an explicit no-answer, or unreachable.
     let receipt = match rx.recv_timeout(budget) {
-        Ok(Some(decision)) => decision_json(dialect, &decision),
-        Ok(None) => None,
+        Ok(report) => receipt_for(dialect, report),
         Err(_) if waits_for_answer => no_answer_json(dialect),
         Err(_) => None,
     };
@@ -274,17 +273,45 @@ fn truncate_strings(value: &mut serde_json::Value) {
     }
 }
 
+/// What the worker learned from Coucou. Three states, because "we could not reach
+/// Coucou" and "Coucou took the request but never answered" must be told apart:
+/// the first is fail-open (print nothing), the second is fail-closed for Hermes.
+enum Talk {
+    /// Coucou was not running, or the connection failed. Print nothing: the agent
+    /// carries on exactly as if we were not installed.
+    Unreachable,
+    /// Coucou took the request and never answered. The human was asked.
+    NoAnswer,
+    /// A decision the human made.
+    Decision(String),
+}
+
+/// The receipt for whatever the worker reported. `None` means print nothing.
+///
+/// `Unreachable` — including a fire-and-forget event, which never reads a reply —
+/// prints nothing for every agent, so a closed Coucou can never block anyone.
+/// `NoAnswer` is the reachable-but-unanswered case: Hermes, which has no re-ask
+/// path, is blocked explicitly; Claude Code stays silent and re-asks.
+fn receipt_for(dialect: Dialect, report: Talk) -> Option<String> {
+    match report {
+        Talk::Decision(decision) => decision_json(dialect, &decision),
+        Talk::NoAnswer => no_answer_json(dialect),
+        Talk::Unreachable => None,
+    }
+}
+
 /// Connect, send, and — for a permission request — wait for the island's word.
-fn talk(payload: &str, waits_for_answer: bool) -> Option<String> {
-    let mut pipe = connect()?;
+fn talk(payload: &str, waits_for_answer: bool) -> Talk {
+    let Some(mut pipe) = connect() else { return Talk::Unreachable };
 
     if pipe.write_all(payload.as_bytes()).is_err() {
-        return None;
+        return Talk::Unreachable;
     }
     let _ = pipe.flush();
 
     if !waits_for_answer {
-        return None;
+        // Fire-and-forget: the event was delivered; there is no reply to report.
+        return Talk::Unreachable;
     }
 
     let mut buf = Vec::new();
@@ -302,7 +329,11 @@ fn talk(payload: &str, waits_for_answer: bool) -> Option<String> {
         }
     }
     let answer = String::from_utf8_lossy(&buf).trim().to_string();
-    (!answer.is_empty()).then_some(answer)
+    if answer.is_empty() {
+        Talk::NoAnswer
+    } else {
+        Talk::Decision(answer)
+    }
 }
 
 #[cfg(test)]
@@ -363,12 +394,36 @@ mod tests {
         // allow, which is worse than not having Coucou installed. Pinned byte-exact:
         // the macOS Python relay asserts the identical string, so a reformat on
         // either side must fail a test.
-        assert_eq!(
-            no_answer_json(Dialect::Hermes).unwrap(),
-            r#"{"action":"block","message":"Coucou: no answer — re-run to be asked again."}"#
-        );
+        let block = r#"{"action":"block","message":"Coucou: no answer — re-run to be asked again."}"#;
+        assert_eq!(no_answer_json(Dialect::Hermes).unwrap(), block);
+        // The same receipt must come out of the worker's three-state result, or the
+        // relay could never reach it in production: a `NoAnswer` is what `talk`
+        // returns when Coucou took the request and closed without a decision.
+        assert_eq!(receipt_for(Dialect::Hermes, Talk::NoAnswer).unwrap(), block);
         // Claude Code's fallback is silence: the terminal asks instead.
         assert!(no_answer_json(Dialect::Claude).is_none());
+        assert!(receipt_for(Dialect::Claude, Talk::NoAnswer).is_none());
+    }
+
+    #[test]
+    fn a_closed_coucou_never_prints_for_any_agent() {
+        // Unreachable is the fail-open state: Coucou closed, or the connection
+        // failed. It must exit 0 with nothing on stdout for every agent — that is
+        // the whole promise that a closed Coucou never blocks your agent.
+        for dialect in [Dialect::Hermes, Dialect::Claude] {
+            assert!(receipt_for(dialect, Talk::Unreachable).is_none());
+        }
+    }
+
+    #[test]
+    fn a_real_decision_flows_through_the_worker_result() {
+        assert_eq!(receipt_for(Dialect::Hermes, Talk::Decision("allow".into())).unwrap(), "{}");
+        assert_eq!(
+            receipt_for(Dialect::Hermes, Talk::Decision("deny".into())).unwrap(),
+            r#"{"action":"block","message":"Denied from Coucou"}"#
+        );
+        // An unrecognised decision prints nothing rather than guessing.
+        assert!(receipt_for(Dialect::Claude, Talk::Decision("maybe".into())).is_none());
     }
 
     #[test]

@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/coucou-agent-dialect.XXXXXX")"
-trap 'rm -rf "$TEST_DIR"' EXIT
+trap 'rm -rf "$TEST_DIR" 2>/dev/null || true' EXIT
 # AgentDialect.swift imports only Foundation, so it compiles with the test alone.
 # Do NOT add PillCatalog.swift or IslandTypes.swift here: IslandTypes reaches
 # IslandScreenGeometry and EyeShape in BotEngine.swift, which pulls in SwiftUI, the

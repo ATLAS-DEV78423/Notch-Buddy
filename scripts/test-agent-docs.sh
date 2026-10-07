@@ -27,6 +27,7 @@ need "post_tool_call"
 need "UserPromptSubmit"
 need "PermissionRequest"
 need '{"action":"block","message":"Denied from Coucou"}'
+need '{"action":"block","message":"Coucou: no answer — re-run to be asked again."}'
 need "shell-hooks-allowlist.json"
 
 # The pill catalog is the single source of truth for the two agents' IDs and colours.

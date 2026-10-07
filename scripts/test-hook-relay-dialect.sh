@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/coucou-relay-dialect.XXXXXX")"
-trap 'rm -rf "$TEST_DIR"' EXIT
+trap 'rm -rf "$TEST_DIR" 2>/dev/null || true' EXIT
 
 # Pull the GitHub relay out of the Swift string literal: everything between the
 # opening `private let nbHookPythonGitHub = """` line and the next `"""`.
