@@ -1,18 +1,19 @@
-//! coucou-hook — the relay Claude Code runs on every hook event.
+//! coucou-hook — the relay every agent runs on every hook event.
 //!
 //! Reads the hook JSON on stdin, adds a little terminal context, and hands it to
 //! Coucou over the named pipe `\\.\pipe\coucou-<sid>` (Windows) or the Unix
 //! socket `$XDG_RUNTIME_DIR/coucou.sock` (Linux).
 //!
-//! Hard rule (docs/CLAUDE.md): **never block Claude Code.**
+//! Hard rule (docs/CLAUDE.md): **never block the agent.**
 //! * If the pipe does not exist — Coucou is closed — we exit 0 immediately with
 //!   nothing on stdout, and the session carries on untouched.
 //! * Every step runs under a deadline enforced by the main thread, so a pipe that
 //!   accepts the connection and then stops reading cannot wedge the session
 //!   either: we abandon the worker and exit.
 //! * Only `PermissionRequest` waits for an answer, because approving from the
-//!   island is the whole point. No answer means empty stdout, and Claude Code
-//!   asks in the terminal exactly as if Coucou were not installed.
+//!   island is the whole point. No answer means empty stdout for Claude Code,
+//!   which re-asks in the terminal exactly as if Coucou were not installed;
+//!   Hermes, which has no re-ask path, is blocked explicitly instead.
 //!
 //! Usage: `coucou-hook <EventName>` (the name is also read from the JSON).
 
@@ -98,6 +99,30 @@ fn dialect_for(agent: &str) -> Dialect {
     }
 }
 
+/// Translate an agent's native event names into Coucou's canonical vocabulary, so
+/// one app-side handler serves every agent.
+///
+/// `pre_tool_call` becomes `PermissionRequest`, **not** `PreToolUse`: Hermes has no
+/// separate permission event, and its `pre_tool_call` hook is the only thing that can
+/// stop a tool — so for the tools the `matcher` selects, it *is* the permission gate.
+/// Mapping it to `PreToolUse` would leave `waits_for_answer` false, the relay would
+/// never wait, and Allow/Deny from the island would be unreachable.
+///
+/// An unrecognised event is forwarded untouched rather than dropped, so a future
+/// Hermes event still shows up in the island as an unknown event instead of vanishing.
+fn canonical_event(dialect: Dialect, raw: &str) -> String {
+    if dialect != Dialect::Hermes {
+        return raw.to_string();
+    }
+    match raw {
+        "pre_llm_call" => "UserPromptSubmit",
+        "pre_tool_call" => "PermissionRequest",
+        "post_tool_call" => "PostToolUse",
+        other => other,
+    }
+    .to_string()
+}
+
 /// The receipt for a decision the human actually made.
 /// `None` means print nothing — silence is the safe answer for an unknown decision.
 fn decision_json(dialect: Dialect, decision: &str) -> Option<String> {
@@ -175,12 +200,18 @@ fn read_event() -> Option<(String, String, String)> {
     if !agent.is_empty() {
         map.insert("coucou_agent".into(), serde_json::Value::String(agent.clone()));
     }
-    let event = map
+    let raw_event = map
         .get("hook_event_name")
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .filter(|s| !s.is_empty())
         .unwrap_or(arg_event);
+
+    // Translate before forwarding: the app routes on this exact field, so
+    // canonicalising only in `main()` would leave the app seeing `pre_tool_call`
+    // while the relay waits on `PermissionRequest`.
+    let dialect = dialect_for(&agent);
+    let event = canonical_event(dialect, &raw_event);
     map.insert("hook_event_name".into(), serde_json::Value::String(event.clone()));
 
     for field in DROPPED_FIELDS {
@@ -329,12 +360,31 @@ mod tests {
     #[test]
     fn hermes_blocks_when_the_human_never_answered() {
         // Coucou was reachable but nobody clicked. Silence here would be a silent
-        // allow, which is worse than not having Coucou installed.
-        let out = no_answer_json(Dialect::Hermes).unwrap();
-        assert!(out.contains(r#""action":"block""#));
-        assert!(out.contains("no answer"));
+        // allow, which is worse than not having Coucou installed. Pinned byte-exact:
+        // the macOS Python relay asserts the identical string, so a reformat on
+        // either side must fail a test.
+        assert_eq!(
+            no_answer_json(Dialect::Hermes).unwrap(),
+            r#"{"action":"block","message":"Coucou: no answer — re-run to be asked again."}"#
+        );
         // Claude Code's fallback is silence: the terminal asks instead.
         assert!(no_answer_json(Dialect::Claude).is_none());
+    }
+
+    #[test]
+    fn hermes_event_names_are_translated_to_canonical_ones() {
+        // Hermes has no separate permission event. Its `pre_tool_call` hook is the
+        // only thing that can stop a tool, so it IS the permission gate — and it
+        // must map to PermissionRequest or the relay never waits for a decision.
+        assert_eq!(canonical_event(Dialect::Hermes, "pre_tool_call"), "PermissionRequest");
+        assert_eq!(canonical_event(Dialect::Hermes, "post_tool_call"), "PostToolUse");
+        assert_eq!(canonical_event(Dialect::Hermes, "pre_llm_call"), "UserPromptSubmit");
+        // An event we do not know is forwarded untouched rather than dropped.
+        assert_eq!(canonical_event(Dialect::Hermes, "something_new"), "something_new");
+        // Every other agent already speaks the canonical vocabulary.
+        for e in ["PermissionRequest", "PreToolUse", "Stop", "SessionStart"] {
+            assert_eq!(canonical_event(Dialect::Claude, e), e);
+        }
     }
 
     #[test]
