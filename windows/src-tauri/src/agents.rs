@@ -65,6 +65,12 @@ const EVENT_MAP = {
   'session.idle': 'Stop',
   'session.error': 'StopFailure',
   'session.deleted': 'SessionEnd',
+  // session.diff MUST have an entry here: the handler below starts with
+  // `if (!hook_event_name) return;`, so a type missing from this map is
+  // swallowed before any branch runs. This key keeps the event past that guard;
+  // the specific `event.type === 'session.diff'` branch then handles it (one
+  // forward per changed file) and returns, so the generic path never sees it.
+  'session.diff': 'PostToolUse',
   'permission.asked': 'Notification',
 };
 
@@ -424,12 +430,48 @@ mod tests {
         assert!(js.contains("coucou-hook.exe"));
         // Parity with macOS.
         assert!(js.contains("ctx?.directory"));
-        assert!(js.contains("session.diff"));
+        // `session.diff` is covered behaviourally by
+        // `the_session_diff_branch_is_reachable` below, not by a substring check
+        // here — the literal string is present in a dead branch even when the
+        // map entry is missing, which is exactly the bug that test guards.
         // The placeholder must be gone.
         assert!(!js.contains("__HOOK__"));
         // Backslashes in the path must be escaped for the JS string literal.
         let win = opencode_plugin_source(r"C:\Users\x\coucou-hook.exe");
         assert!(win.contains(r"C:\\Users\\x\\coucou-hook.exe"), "{win}");
+    }
+
+    #[test]
+    fn the_session_diff_branch_is_reachable() {
+        // The handler opens with `if (!hook_event_name) return;`, so any event
+        // type missing from EVENT_MAP is dropped before a branch can run. The
+        // per-file diff forwarding only executes if `session.diff` is in the map
+        // *and* its branch sits downstream of the lookup. Assert both, so
+        // deleting the map entry (or the branch) fails here instead of silently
+        // forwarding nothing.
+        let js = opencode_plugin_source("C:/x/coucou-hook.exe");
+
+        // 1. The map literal must carry a `session.diff` key.
+        let map_start = js.find("const EVENT_MAP = {").expect("EVENT_MAP literal");
+        let map_end = js[map_start..].find("};").expect("EVENT_MAP terminator") + map_start;
+        let map = &js[map_start..map_end];
+        assert!(
+            map.contains("'session.diff':"),
+            "EVENT_MAP must key session.diff or the early return swallows it:\n{map}"
+        );
+
+        // 2. The gating lookup must come before the session.diff branch, so the
+        //    branch is genuinely downstream of the guard rather than unreachable.
+        //    Match the whole branch condition, not just the event name — the
+        //    name alone also appears in the EVENT_MAP comment above.
+        let lookup = js.find("EVENT_MAP[event.type]").expect("EVENT_MAP lookup");
+        let branch = js
+            .find("if (event.type === 'session.diff' && Array.isArray(props.diff))")
+            .expect("session.diff branch");
+        assert!(
+            lookup < branch,
+            "the session.diff branch must follow the EVENT_MAP lookup that gates it"
+        );
     }
 
     #[test]
