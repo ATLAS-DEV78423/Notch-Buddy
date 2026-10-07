@@ -67,6 +67,8 @@ enum PillCatalog {
               category: .agent,     subtitle: "Agent",        source: .agent,  githubOnly: true),
         .init(id: "agent_amp",           name: "Amp",         color: "#F59E0B",
               category: .agent,     subtitle: "Agent",        source: .agent,  githubOnly: true),
+        .init(id: "agent_hermes",        name: "Hermes",      color: "#A78BFA",
+              category: .agent,     subtitle: "Agent",        source: .agent,  githubOnly: true),
         // ── AI for the chat ──────────────────────────────────────────────────
         .init(id: "ai_anthropic",        name: "Anthropic",   color: ChatProvider.anthropic.accentHex,
               category: .ai,        subtitle: "Chat",         source: .n8n),
