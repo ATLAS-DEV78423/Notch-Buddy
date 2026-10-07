@@ -204,7 +204,7 @@ fn pretty(v: &Value) -> String {
 
 /// Down to the second: installing then uninstalling in the same minute must not
 /// quietly overwrite the first backup.
-fn stamp() -> String {
+pub(crate) fn stamp() -> String {
     let t = platform::local_time();
     format!(
         "{:04}{:02}{:02}-{:02}{:02}{:02}",
@@ -212,14 +212,23 @@ fn stamp() -> String {
     )
 }
 
+/// Was `fn backup_path()`. Generalised so the agent installers in agents.rs share
+/// one backup convention instead of growing a second one.
+pub(crate) fn backup_path_for(path: &Path, stamp: &str) -> PathBuf {
+    path.with_file_name(format!(
+        "{}.bak-{}",
+        path.file_name().unwrap_or_default().to_string_lossy(),
+        stamp
+    ))
+}
+
 fn backup_path() -> PathBuf {
-    let p = settings_path();
-    p.with_file_name(format!("settings.json.bak-{}", stamp()))
+    backup_path_for(&settings_path(), &stamp())
 }
 
 /// Identifies the exact bytes a preview was computed from. FNV-1a is plenty:
 /// the question is only "is this still the file I showed the user?".
-fn fingerprint(bytes: &[u8]) -> String {
+pub(crate) fn fingerprint(bytes: &[u8]) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
         hash ^= *b as u64;
@@ -324,7 +333,7 @@ pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
 /// On Linux a fresh file would get the umask's 0644, and settings.json can hold
 /// API keys in its `env` block: the new file is created readable by us only,
 /// then given the original's permissions, so the rename never widens them.
-fn write_like(temp: &Path, original: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_like(temp: &Path, original: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -432,7 +441,7 @@ fn install_relay(src: &Path, dest: &Path) {
 // ── Minimal unified diff (LCS) ────────────────────────────────────────────────
 
 /// settings.json is short, so a plain O(n·m) LCS is the simplest honest diff.
-fn unified_diff(before: &str, after: &str) -> String {
+pub(crate) fn unified_diff(before: &str, after: &str) -> String {
     let a: Vec<&str> = before.lines().collect();
     let b: Vec<&str> = after.lines().collect();
     let (n, m) = (a.len(), b.len());
