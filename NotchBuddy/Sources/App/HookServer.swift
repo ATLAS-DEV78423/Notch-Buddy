@@ -414,6 +414,8 @@ final class HookServer: @unchecked Sendable {
             case "agent_codex":   handledNote = "Handled in Codex."
             case "agent_copilot": handledNote = "Handled in Copilot CLI."
             case "agent_muse":    handledNote = "Handled in Muse Code."
+            case "agent_hermes":  handledNote = "Handled in Hermes."
+            case "agent_opencode": handledNote = "Handled in OpenCode."
             default:              handledNote = "Handled in VS Code."
             }
             var resolved = false
@@ -590,7 +592,12 @@ final class HookServer: @unchecked Sendable {
     private func upsertExternalAgent(id: String, name: String) {
         let state = AppState.shared
         guard state.tasks.firstIndex(where: { $0.id == id }) == nil else { return }
-        let color = IslandConst.colorForProject(name)
+        // Declared agents take their colour from PillCatalog — the single source of
+        // truth. Undeclared agents keep the hashed project colour they always had.
+        // The lookup lives here rather than in AgentDialect so that file stays
+        // dependency-free and testable (see Task 4).
+        let color = PillCatalog.definition(for: "agent_\(name)")?.color
+            ?? IslandConst.colorForProject(name)
         let task = AgentTask(id: id, name: name, color: color, state: .idle, steps: [], source: .agent)
         if let claudeIdx = state.tasks.firstIndex(where: { $0.id == "integration_claude" }) {
             state.tasks.insert(task, at: claudeIdx + 1)
@@ -669,7 +676,12 @@ final class HookServer: @unchecked Sendable {
         let isCopilotRequest = false
         let isMuseRequest    = false
         #endif
-        if !isCodexRequest && !isCopilotRequest && !isMuseRequest && Self.validateAgent(rawAgent) != nil {
+        // Hermes' pre_tool_call hook can block, so Allow/Deny is enforceable.
+        // OpenCode's API cannot return a decision, so it stays display-only and
+        // falls through to the decline path below — the card says "Handled in OpenCode."
+        let isHermesRequest  = AgentDialect(agent: rawAgent)?.allowsApproval == true
+        if !isCodexRequest && !isCopilotRequest && !isMuseRequest && !isHermesRequest
+            && Self.validateAgent(rawAgent) != nil {
             Task.detached { [weak self] in
                 self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
                 close(fd)
@@ -685,12 +697,15 @@ final class HookServer: @unchecked Sendable {
             pillId = "agent_copilot"
         } else if isMuseRequest {
             pillId = "agent_muse"
+        } else if isHermesRequest {
+            pillId = "agent_hermes"
         } else if isCursorEditor {
             pillId = "agent_cursor"
         } else {
             pillId = "integration_claude"
         }
-        guard isCodexRequest || isCopilotRequest || isMuseRequest || isCursorEditor || isVSCodeEditor else {
+        guard isCodexRequest || isCopilotRequest || isMuseRequest || isHermesRequest
+              || isCursorEditor || isVSCodeEditor else {
             Task.detached { [weak self] in
                 self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
                 close(fd)
@@ -756,6 +771,8 @@ final class HookServer: @unchecked Sendable {
             case "agent_codex":   note = "Handled in Codex."
             case "agent_copilot": note = "Handled in Copilot CLI."
             case "agent_muse":    note = "Handled in Muse Code."
+            case "agent_hermes":  note = "Handled in Hermes."
+            case "agent_opencode": note = "Handled in OpenCode."
             default:              note = "Handled in VS Code."
             }
             self.dismissApprovalCard(note: note)
@@ -777,6 +794,8 @@ final class HookServer: @unchecked Sendable {
             case "agent_codex":   note = "Still waiting in Codex."
             case "agent_copilot": note = "Still waiting in Copilot CLI."
             case "agent_muse":    note = "Still waiting in Muse Code."
+            case "agent_hermes":  note = "Still waiting in Hermes."
+            case "agent_opencode": note = "Still waiting in OpenCode."
             default:              note = "Still waiting in VS Code."
             }
             self.dismissApprovalCard(note: note)

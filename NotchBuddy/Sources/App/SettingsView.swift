@@ -73,6 +73,11 @@ struct SettingsView: View {
     @State private var showAmpDiff: Bool = false
     @State private var pendingAmpContent: String = ""
     @State private var ampPendingInstall: Bool = true
+
+    @State private var hermesHooksInstalled: Bool = HookServer.hermesHooksInstalled()
+    @State private var showHermesDiff: Bool = false
+    @State private var pendingHermesContent: String = ""
+    @State private var hermesPendingInstall: Bool = true
     #endif
 
     // Multi-provider chat keys
@@ -758,6 +763,39 @@ struct SettingsView: View {
             .padding(6)
         }
 
+        GroupBox(String(localized: "plugin.hermes.title")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(hermesHooksInstalled
+                     ? String(localized: "plugin.hermes.installed")
+                     : "~/.hermes/config.yaml")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+                HStack(spacing: 10) {
+                    Button(String(localized: "plugin.install")) { triggerHermesPreview(install: true) }
+                        .buttonStyle(.borderedProminent)
+                    Button(String(localized: "hooks.uninstall")) { triggerHermesPreview(install: false) }
+                        .buttonStyle(.bordered)
+                }
+                if showHermesDiff {
+                    ScrollView {
+                        Text(pendingHermesContent)
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 140)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(6)
+                    HStack {
+                        Button(String(localized: "hooks.confirm-write")) { confirmHermesOp() }
+                            .buttonStyle(.borderedProminent)
+                        Button(String(localized: "Cancel")) { showHermesDiff = false; pendingHermesContent = "" }
+                            .buttonStyle(.bordered)
+                    }
+                }
+            }
+            .padding(6)
+        }
+
         GroupBox(String(localized: "plan.title")) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(String(localized: "plan.description"))
@@ -1408,6 +1446,35 @@ struct SettingsView: View {
             statusMessage = ampPendingInstall
                 ? String(localized: "status.amp-plugin-installed")
                 : String(localized: "status.amp-plugin-removed")
+        } catch {
+            statusMessage = "❌ \(error.localizedDescription)"
+        }
+    }
+
+    private func triggerHermesPreview(install: Bool) {
+        do {
+            hermesPendingInstall = install
+            pendingHermesContent = try HookServer.shared.previewHermesHooks(install: install)
+            showHermesDiff = true
+            statusMessage = String(localized: "plugin.review-content")
+        } catch let e as NSError where e.domain == "CoucouNoop" {
+            statusMessage = e.localizedDescription
+        } catch {
+            statusMessage = "❌ \(error.localizedDescription)"
+        }
+    }
+
+    private func confirmHermesOp() {
+        do {
+            // previewHermesHooks already stored the merged text (install or removal);
+            // writeHermesHooks commits it after the fingerprint check.
+            try HookServer.shared.writeHermesHooks()
+            showHermesDiff = false
+            pendingHermesContent = ""
+            hermesHooksInstalled = hermesPendingInstall
+            statusMessage = hermesPendingInstall
+                ? String(localized: "plugin.hermes.install-ok")
+                : String(localized: "plugin.hermes.remove-ok")
         } catch {
             statusMessage = "❌ \(error.localizedDescription)"
         }
