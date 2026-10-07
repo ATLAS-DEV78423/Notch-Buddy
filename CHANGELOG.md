@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Hermes Agent sessions show up in the notch: see every step live, and approve or deny
+  Hermes tool calls right from the island. Hermes' `pre_tool_call` hook can block, so a
+  Deny from Coucou actually stops the tool. Install from Settings → Hermes; Coucou shows
+  what will change in `~/.hermes/config.yaml` and backs it up before writing *(macOS, Windows, Linux)*
+- OpenCode now works on Windows and Linux, not just macOS: the plugin installs to the same
+  `~/.config/opencode/plugins/` path on every platform. OpenCode permissions are shown in
+  the ticker and answered in OpenCode's own terminal — its plugin API cannot return a
+  decision, so Coucou does not pretend to *(macOS, Windows, Linux)*
+- OpenCode sessions show file diffs in the ticker, and every agent pill now uses its
+  declared colour on Windows and Linux instead of a random one
+
 ## 0.2.0 — October 6, 2026
 
 - GitHub Copilot CLI and Muse Code sessions show up in the notch: see every step live and approve or deny permissions right from the island. Install from Settings → Agents → Copilot CLI / Muse Code, which shows what will change in your config and backs it up before writing *(GitHub build)* (#263)

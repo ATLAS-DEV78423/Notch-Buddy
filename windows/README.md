@@ -149,9 +149,11 @@ The relay (`coucou-hook.exe`) works with any tool that can run a command on hook
 | Codex | `--agent codex` positional arg | `%USERPROFILE%\.codex\hooks.json` |
 | Copilot CLI | `--agent copilot` positional arg + camelCase events | `%USERPROFILE%\.copilot\hooks\coucou.json` |
 | Muse Code | `--agent muse` positional arg | `%USERPROFILE%\.config\muse\settings.json` |
+| Hermes | **Settings → Hermes → Install hooks** | `%USERPROFILE%\.hermes\config.yaml` |
+| OpenCode | **Settings → OpenCode Plugin → Install** | `%USERPROFILE%\.config\opencode\plugins\coucou.js` |
 | Any other | `--agent <name>` positional arg | your tool's hook config |
 
-OpenCode and Amp are not yet supported on Windows or Linux. Their integration uses a plugin that calls `/bin/sh` with macOS-specific paths; the plugin installer lives in the Mac app only.
+Amp is not yet supported on Windows or Linux. Its integration uses a plugin that calls `/bin/sh` with macOS-specific paths; the plugin installer lives in the Mac app only.
 
 ## What's different from the Mac version
 

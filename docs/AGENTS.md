@@ -313,3 +313,17 @@ The permission is surfaced in the ticker as a question and the card reads
 | `permission.asked` | `Notification` (`Allow <tool>?`) |
 | `tool.execute.before` | `PreToolUse` |
 | `tool.execute.after` | `PostToolUse` |
+
+## Platform support matrix
+
+| Agent | macOS | Windows | Linux | Approvals | Why not, where not |
+|---|---|---|---|---|---|
+| Claude Code | ✅ | ✅ | ✅ | ✅ | — |
+| Gemini CLI | ✅ | ❌ | ❌ | ✅ | mac-only hook installer |
+| Antigravity | ✅ | ❌ | ❌ | ✅ | mac-only hook installer |
+| Codex | ✅ | ✅ | ✅ | ✅ | — |
+| Copilot CLI | ✅ | ✅ | ✅ | ✅ | — |
+| Muse Code | ✅ | ✅ | ✅ | ✅ | — |
+| **OpenCode** | ✅ | ✅ | ✅ | ❌ | plugin API cannot return a decision |
+| **Hermes** | ✅ | ✅ | ✅ | ✅ | — |
+| Amp | ✅ | ❌ | ❌ | ❌ | mac-only plugin path |

@@ -202,6 +202,27 @@ Priorité : failure > review demandée > success. Un seul badge/son par cycle.
 
 ---
 
+## 1quinquies. Agents Hermes et OpenCode (macOS, Windows, Linux)
+
+Hermes Agent et OpenCode sont des agents de premier ordre : chacun a sa pastille (`agent_hermes` `#A78BFA`, `agent_opencode` `#4ADE80`), son fil d'activité, ses diffs et son cycle de vie, sur les trois plateformes. Contrat complet dans `docs/AGENTS.md`.
+
+### Hermes Agent
+
+- **Surface** : hooks shell déclarés dans `~/.hermes/config.yaml` (clé de premier niveau `hooks:`, voisine de `model:`), encadrés par les marqueurs `# coucou:begin` / `# coucou:end`. Pas de script d'enveloppe : l'entrée pointe directement sur le relais Coucou.
+- **Installation** : Réglages → Hermes → **Install hooks**. Coucou montre le diff de `~/.hermes/config.yaml` et écrit une sauvegarde `.bak-*` avant toute modification. Il refuse d'écrire si une clé `hooks:` étrangère existe déjà et affiche le bloc à coller.
+- **Événements** : `pre_llm_call` → `UserPromptSubmit`, `pre_tool_call` → `PermissionRequest` (limité par `matcher: "terminal|write_file|patch"`), `post_tool_call` → `PostToolUse`.
+- **Approbations** : réelles. `pre_tool_call` est le seul hook Hermes qui peut bloquer un outil, donc Allow/Deny depuis l'île arrête réellement l'outil. Reçus sur stdout : `{}` (allow), `{"action":"block","message":"Denied from Coucou"}` (deny), blocage si Coucou est ouvert mais sans réponse. Coucou n'est pas `fail_closed` : app fermée = aucun octet écrit, Hermes continue.
+- **Consentement** : Hermes exige que chaque paire `(événement, commande)` soit approuvée dans `~/.hermes/shell-hooks-allowlist.json` ; sinon le hook est ignoré (`hermes hooks list` affiche `✗ not allowlisted`). Approuver avec `hermes --accept-hooks chat` ou `HERMES_ACCEPT_HOOKS=1`.
+
+### OpenCode
+
+- **Surface** : un plugin généré à `~/.config/opencode/plugins/coucou.js` — le même chemin XDG sur toutes les plateformes (c'est pourquoi OpenCode fonctionne sous Windows, contrairement à Amp). Le plugin lance le relais en fire-and-forget : il n'attend jamais, OpenCode n'est jamais ralenti. Sous Windows il lance directement `coucou-hook.exe` (sans `/bin/sh`).
+- **Installation** : Réglages → OpenCode Plugin → **Install**. Coucou montre le diff et sauvegarde un `coucou.js.bak-*`. Il refuse de supprimer un fichier qui n'a pas été généré par Coucou.
+- **Approbations** : **affichage seulement.** L'API plugin d'OpenCode expose `permission.asked` comme un *événement observable*, pas comme un hook capable de renvoyer une décision : Coucou ne peut donc pas répondre. La permission s'affiche dans le fil (état question, `Allow <tool>?`) et la carte indique `Handled in OpenCode.` (macOS) — la réponse se fait dans le terminal d'OpenCode. Sous Windows, aucune carte n'est affichée : OpenCode gère sa propre invite.
+- **Événements** : `session.created` → `SessionStart`, `session.idle` → `Stop`, `session.error` → `StopFailure`, `session.deleted` → `SessionEnd`, `session.diff` → `PostToolUse` (porte le diff), `permission.asked` → `Notification` (`Allow <tool>?`), `tool.execute.before` → `PreToolUse`, `tool.execute.after` → `PostToolUse`.
+
+---
+
 ## 2. n8n (workflows de Louis)
 
 - Réglages : URL de l'instance (probablement `https://n8nlouis.dcsys.tech`, **à confirmer avec Louis**) et clé API n8n (Trousseau). La clé se crée dans n8n : Settings → n8n API.
