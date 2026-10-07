@@ -613,6 +613,7 @@ name = "coucou"
 version = "0.1.1"
 dependencies = [
  "gtk",
+ "indexmap 1.9.3",
  "keyring",
  "libc",
  "reqwest 0.12.28",

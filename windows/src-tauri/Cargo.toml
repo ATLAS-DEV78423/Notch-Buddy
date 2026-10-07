@@ -12,6 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Same reason as the [dependencies] entry below: Cargo resolves the build
+# graph's features separately, and tauri-build pulls schemars 0.8 -> indexmap 1.x.
+indexmap = { version = "1.9", features = ["std"] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
@@ -21,6 +24,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "rt"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# indexmap 1.x comes in through schemars 0.8 (via tauri-utils). Its build script
+# probes the sysroot with autocfg to decide whether `std` is available, and that
+# probe fails on rustc 1.99 — so indexmap compiles its no-std variant, dropping
+# the `S = RandomState` default, and schemars' `Map<K, V>` alias stops compiling.
+# Enabling the feature explicitly makes the build script skip the probe.
+indexmap = { version = "1.9", features = ["std"] }
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
