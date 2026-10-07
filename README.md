@@ -28,7 +28,9 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 ## Why
 
 Some studios showed off gorgeous notch companions… and never let anyone use them.
-**Notch-Buddy is the open version.** Every line of code is open source under the MIT License: read it, fork it, learn from it. The Coucou name, Mochi and the sounds stay © Louis Raillé (see [License](#license)). Notch-Buddy is a fork of **Coucou** by **Louis Raillé** (MIT). The Coucou name, the Mochi character, the icon, the sounds and the media remain © Louis Raillé and are not used by this fork.
+**Notch-Buddy is the open version.** Every line of code is open source under the MIT License: read it, fork it, learn from it.
+
+Notch-Buddy is a fork of **Coucou** by **Louis Raillé** (MIT). The Coucou name, the Mochi character, the icon, the sounds and the media remain © Louis Raillé and are not used by this fork — see [NOTICE.md](NOTICE.md).
 
 Meet **Pip**: a soft little squircle with big eyes that pops out of your notch, waves hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
 
@@ -98,19 +100,24 @@ The Mac app does the work; the iPhone app keeps you in the loop when you step aw
 
 macOS releases are published as `v*` tags. See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
 
+> The table below is the **upstream Coucou release history**, by Louis Raillé. The entries
+> keep their original names and link to the original project's releases — this fork did not
+> make them and does not rewrite them. Notch-Buddy's own changes are at the top of
+> [CHANGELOG.md](CHANGELOG.md).
+
 | Version | Date | Highlights |
 |---------|------|------------|
 | [0.2.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.2.0) | Oct 6, 2026 | Copilot CLI, Muse Code, OpenCode and Amp, weekly recap, 10 languages |
 | [0.1.9](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.9) | Oct 6, 2026 | iPhone services with live details and actions, smarter Live Activity |
-| [0.1.8](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.8) | Oct 5, 2026 | Notch-Buddy on iPhone: sessions, widgets, approvals with Face ID, Pip in the Dynamic Island |
+| [0.1.8](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.8) | Oct 5, 2026 | Coucou on iPhone: sessions, widgets, approvals with Face ID, Mochi in the Dynamic Island |
 | [0.1.7](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.7) | Oct 4, 2026 | Keyboard shortcuts |
-| [0.1.6](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.6) | Oct 4, 2026 | Pip on the desktop |
+| [0.1.6](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.6) | Oct 4, 2026 | Mochi on the desktop |
 | [0.1.5](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.5) | Oct 4, 2026 | Wardrobe and seasonal outfits, new launch greeting |
 | [0.1.4](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.4) | Oct 3, 2026 | Live diffs, GitHub pull requests, CI, reviews and contribution grid |
 | [0.1.3](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.3) | Oct 3, 2026 | Answer Claude's questions from the notch, plan usage, local models, Apple Music |
 | [0.1.2](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.2) | Oct 2, 2026 | Codex and Cursor support, the permission card stays until you answer |
 | [0.1.1](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.1) | Oct 2, 2026 | Gemini and OpenAI chat, Linux build, more agents and pills, security hardening |
-| [0.1.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.0) | Sep 27, 2026 | First release: Pip, Claude Code sessions, chat, file drop, integrations |
+| [0.1.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.0) | Sep 27, 2026 | First release: Mochi, Claude Code sessions, chat, file drop, integrations |
 
 Windows 0.1.1 and Linux 0.1.1 (beta) are in Releases under the `windows-v*` and `linux-v*` tags.
 
@@ -140,8 +147,13 @@ Everything else, troubleshooting included, is in [docs/IPHONE.md](docs/IPHONE.md
 
 ### Download for macOS
 
-1. Grab the latest `Notch-Buddy.zip` from [Releases](https://github.com/Louis-CFM/coucou/releases).
-2. Unzip and move **Notch-Buddy.app** to `/Applications`.
+> **The built artifacts still carry the original names.** The app is `Coucou.app`, the
+> archive `Coucou.zip`, the Linux packages `Coucou-Linux-*`, the Windows installer
+> `Coucou-Windows-*-setup.exe`. Renaming the build itself is a separate change — see
+> [NOTICE.md](NOTICE.md). The filenames below are what the current build actually produces.
+
+1. Grab the latest `Coucou.zip` from [Releases](https://github.com/Louis-CFM/coucou/releases).
+2. Unzip and move **Coucou.app** to `/Applications`.
 3. Launch it, and click **Open** when macOS asks you to confirm. Updating from 0.1.0? macOS may ask you, once for each key you saved, to let Notch-Buddy use it: enter your Mac password and click **Always Allow**.
 
 ### Windows
@@ -159,9 +171,9 @@ rest of the differences.
 
 The first Linux build is out as a beta: download it from [Notch-Buddy for Linux 0.1.1 (beta)](https://github.com/Louis-CFM/coucou/releases/tag/linux-v0.1.1), x86_64 only for now. Later versions will be in [Releases](https://github.com/Louis-CFM/coucou/releases) under `linux-v*` tags.
 
-- **AppImage** (any distribution): `chmod +x Notch-Buddy-Linux-*.AppImage`, then run it.
-- **Debian / Ubuntu**: `sudo apt install ./Notch-Buddy-Linux-*.deb`
-- **Fedora / openSUSE**: `sudo dnf install ./Notch-Buddy-Linux-*.rpm`
+- **AppImage** (any distribution): `chmod +x Coucou-Linux-*.AppImage`, then run it.
+- **Debian / Ubuntu**: `sudo apt install ./Coucou-Linux-*.deb`
+- **Fedora / openSUSE**: `sudo dnf install ./Coucou-Linux-*.rpm`
 
 Check a download with `sha256sum -c SHA256SUMS --ignore-missing`. Gemini CLI, Antigravity, Google AI, OpenAI and local model (Ollama / LM Studio) chat are macOS only for now.
 

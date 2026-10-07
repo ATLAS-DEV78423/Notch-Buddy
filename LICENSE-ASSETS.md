@@ -1,4 +1,16 @@
-# Coucou — name, character and artwork
+# Assets licence — Coucou name, character and artwork
+
+> **Fork note.** This file is the **upstream assets licence**, written by Louis Raillé for
+> the original Coucou project. It is reproduced below unaltered, because it governs his
+> assets and the fork does not get to rewrite it.
+>
+> **Notch-Buddy (this fork) does not claim any of the assets listed here.** It does not use
+> the Coucou name, the Mochi character, the icon, the sounds or the media, and it ships
+> under its own name. See [NOTICE.md](NOTICE.md) for the fork's own attribution and for the
+> list of reserved files still present in this repository that must be replaced before
+> distribution.
+
+---
 
 Copyright (c) 2026 Louis Raillé. All rights reserved, except as stated below.
 
