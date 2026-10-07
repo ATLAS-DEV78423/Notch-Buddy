@@ -3,7 +3,7 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, onEvent, type HookStatus } from "../core/bridge";
+import { Bridge, onEvent, type HookStatus, type AgentStatus, type AgentPreview } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
 
@@ -165,6 +165,89 @@ function claudeSection(status: HookStatus): HTMLElement {
       text: "Cancel",
       onclick: () => { clear(body); draw(); },
     })));
+  }
+
+  draw();
+  return section;
+}
+
+// ── Agent installers (OpenCode, Hermes) ───────────────────────────────────────
+
+/** OpenCode or Hermes: status, install/remove, and a diff to read before writing. */
+function agentSection(
+  title: string,
+  targetPath: string,
+  installed: boolean,
+  status: () => Promise<AgentStatus | null>,
+  preview: (install: boolean) => Promise<AgentPreview>,
+  apply: (install: boolean, fingerprint: string) => Promise<string>,
+  hint: string,
+): HTMLElement {
+  const state = { installed, path: targetPath };
+  const body = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
+  const section = h("section", {}, h("h2", {}, statusDot(state.installed), h("span", { text: title })), body);
+
+  const rebuild = async () => {
+    const fresh = await status();
+    if (fresh) Object.assign(state, fresh);
+    clear(body);
+    draw();
+    const head = section.querySelector("h2")!;
+    clear(head);
+    head.append(statusDot(state.installed), h("span", { text: title }));
+  };
+
+  function draw() {
+    body.append(
+      h("div", { class: "hint", text: hint }),
+      h("div", { class: "row" }, h("label", { text: "File" }), h("span", { class: "path", text: state.path })),
+    );
+    const actions = h("div", { class: "row" });
+    actions.append(h("button", {
+      class: "primary",
+      text: state.installed ? "Reinstall…" : "Install…",
+      onclick: () => showPreview(true),
+    }));
+    if (state.installed) {
+      actions.append(h("button", { class: "danger", text: "Uninstall…", onclick: () => showPreview(false) }));
+    }
+    body.append(actions);
+  }
+
+  async function showPreview(install: boolean) {
+    let plan: AgentPreview;
+    try {
+      plan = await preview(install);
+    } catch (err) {
+      // A foreign file, or a config we refuse to merge. Show it and stop — never
+      // treat "unreadable" as "empty" and write over it.
+      clear(body);
+      body.append(
+        h("div", { class: "notice err", text: String(err).replace(/^Error:\s*/, "") }),
+        h("div", { class: "row" }, h("button", { text: "Back", onclick: () => { clear(body); draw(); } })),
+      );
+      return;
+    }
+    clear(body);
+    body.append(
+      h("div", { class: "hint", text: install ? "This is exactly what will change." : "This removes Coucou's entries only." }),
+      renderDiff(plan.diff),
+      h("div", { class: "row" }, h("span", { class: "path", text: `Backup → ${plan.backup}` })),
+    );
+    const confirm = h("button", { class: install ? "primary" : "danger", text: install ? "Back up and write" : "Back up and remove" });
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        const backup = await apply(install, plan.fingerprint);
+        clear(body);
+        body.append(h("div", { class: "notice ok", text: `Done. Previous file saved as ${backup}.` }));
+        window.setTimeout(() => void rebuild(), 2600);
+      } catch (err) {
+        confirm.disabled = false;
+        body.append(h("div", { class: "notice err", text: `Could not write: ${String(err)}` }));
+      }
+    });
+    body.append(h("div", { class: "row" }, confirm, h("button", { text: "Cancel", onclick: () => { clear(body); draw(); } })));
   }
 
   draw();
@@ -438,6 +521,31 @@ async function main() {
   const present: Record<string, boolean> = {};
   for (const k of keys) present[k] = (await Bridge.secretPresent(k)) ?? false;
 
+  const opencode = (await Bridge.opencodeStatus()) ?? { installed: false, path: "" };
+  const hermes = (await Bridge.hermesStatus()) ?? { installed: false, path: "" };
+
+  const agentsSection = h("div", { style: "display:flex;flex-direction:column;gap:18px" });
+  agentsSection.append(
+    agentSection(
+      "OpenCode",
+      opencode.path,
+      opencode.installed,
+      Bridge.opencodeStatus,
+      Bridge.opencodePreview,
+      Bridge.opencodeWrite,
+      "Sessions, steps and file diffs show up in the island. OpenCode answers its own permission prompts — Coucou shows them but cannot decide for it.",
+    ),
+    agentSection(
+      "Hermes",
+      hermes.path,
+      hermes.installed,
+      Bridge.hermesStatus,
+      Bridge.hermesPreview,
+      Bridge.hermesWrite,
+      "Sessions and steps show up in the island, and you can allow or deny Hermes tool calls from the notch. Coucou shows the change to ~/.hermes/config.yaml before writing.",
+    ),
+  );
+
   clear(root);
   root.append(
     h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
@@ -445,6 +553,7 @@ async function main() {
     apiSection(hasKey),
     integrationsSection(present),
     generalSection(),
+    agentsSection,
     h("div", {
       class: "hint",
       text: "No telemetry. Network requests only go to the services you configure yourself.",

@@ -73,6 +73,21 @@ export const Bridge = {
   hooksApply: (install: boolean, fingerprint: string) =>
     callOrThrow<string>("hooks_apply", { install, fingerprint }),
 
+  // ── Agent installers ──────────────────────────────────────────────────────
+  // Same shape as the hooks methods above: status is infallible, preview/write
+  // can refuse (a foreign file, a changed fingerprint).
+  opencodeStatus: () => call<AgentStatus>("opencode_status"),
+  opencodePreview: (install: boolean) =>
+    callOrThrow<AgentPreview>("opencode_preview", { install }),
+  opencodeWrite: (install: boolean, fingerprint: string) =>
+    callOrThrow<string>("opencode_write", { install, fingerprint }),
+
+  hermesStatus: () => call<AgentStatus>("hermes_status"),
+  hermesPreview: (install: boolean) =>
+    callOrThrow<AgentPreview>("hermes_preview", { install }),
+  hermesWrite: (install: boolean, fingerprint: string) =>
+    callOrThrow<string>("hermes_write", { install, fingerprint }),
+
   approvalDecision: (requestId: string, decision: "allow" | "deny") =>
     call<void>("approval_decision", { requestId, decision }),
   /** "The card is up" — until this lands the relay only waits a moment. */
@@ -130,6 +145,19 @@ export interface HookPreview {
   backup: string;
   settingsPath: string;
   /** Hand back to hooksApply so only the reviewed diff is ever written. */
+  fingerprint: string;
+}
+
+export interface AgentStatus {
+  installed: boolean;
+  path: string;
+}
+
+export interface AgentPreview {
+  diff: string;
+  backup: string;
+  path: string;
+  /** Hand back to `*Write` so only the reviewed diff is ever written. */
   fingerprint: string;
 }
 

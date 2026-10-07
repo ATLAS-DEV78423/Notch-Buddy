@@ -21,6 +21,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
+use agents::{AgentPreview, AgentStatus};
 use claude::{Chat, ChatContext, ChatReply};
 use files::DroppedFile;
 use hooks::{HookPreview, HookStatus};
@@ -212,6 +213,39 @@ fn hooks_apply(
     Ok(backup)
 }
 
+// ── Agent installers (OpenCode, Hermes) ───────────────────────────────────────
+
+#[tauri::command]
+fn opencode_status() -> AgentStatus {
+    agents::opencode_status()
+}
+
+#[tauri::command]
+fn opencode_preview(install: bool) -> Result<AgentPreview, String> {
+    agents::opencode_preview(install)
+}
+
+/// Only ever called from an explicit click in the settings window.
+#[tauri::command]
+fn opencode_write(install: bool, fingerprint: String) -> Result<String, String> {
+    agents::opencode_write(install, &fingerprint)
+}
+
+#[tauri::command]
+fn hermes_status() -> AgentStatus {
+    agents::hermes_status()
+}
+
+#[tauri::command]
+fn hermes_preview(install: bool) -> Result<AgentPreview, String> {
+    agents::hermes_preview(install)
+}
+
+#[tauri::command]
+fn hermes_write(install: bool, fingerprint: String) -> Result<String, String> {
+    agents::hermes_write(install, &fingerprint)
+}
+
 #[tauri::command]
 fn approval_decision(app: AppHandle, request_id: String, decision: String) {
     pipe::answer(&app, &request_id, &decision);
@@ -388,6 +422,12 @@ pub fn run() {
             hooks_status,
             hooks_preview,
             hooks_apply,
+            opencode_status,
+            opencode_preview,
+            opencode_write,
+            hermes_status,
+            hermes_preview,
+            hermes_write,
             approval_decision,
             approval_ack,
             approval_decline,
