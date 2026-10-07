@@ -3,6 +3,7 @@
 // Difference from macOS: no terminal filter. On Windows the hook fires from any
 // terminal (Windows Terminal, VS Code, PowerShell…) and all of them are handled.
 
+import { agentMeta } from "../core/agents";
 import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -32,16 +33,6 @@ function validateAgent(raw: string | undefined): string | null {
   if (!raw || raw.length > 24 || raw === "claude") return null;
   if (!/^[a-z0-9-]+$/.test(raw)) return null;
   return raw;
-}
-
-const FALLBACK_COLORS = ["#22C55E", "#EAB308", "#60A5FA", "#E879F9"];
-
-function agentColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) {
-    h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
-  }
-  return FALLBACK_COLORS[Math.abs(h) % FALLBACK_COLORS.length];
 }
 
 const PROJECT_ALIASES: Record<string, string> = {
@@ -176,7 +167,10 @@ function handleHook(island: Island, payload: HookPayload) {
   /** Ensure the agent pill exists (no-op for Claude Code). */
   const ensurePill = () => {
     if (isExternalAgent) {
-      State.upsertExternalAgent(agentId, validAgent!, agentColor(validAgent!));
+      // Name and colour come from the catalog mirror, so an agent looks the same
+      // here as it does in the notch on macOS.
+      const meta = agentMeta(validAgent!);
+      State.upsertExternalAgent(agentId, meta.name, meta.color);
     } else {
       upsert(projectName, cwd);
     }
