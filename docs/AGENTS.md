@@ -1,16 +1,16 @@
-# Coucou — third-party agent integration
+# Notch-Buddy — third-party agent integration
 
-Any tool that can write to a Unix domain socket (macOS, Linux) or a named pipe (Windows) can send events to Coucou and have its own pill next to Claude Code.
+Any tool that can write to a Unix domain socket (macOS, Linux) or a named pipe (Windows) can send events to Notch-Buddy and have its own pill next to Claude Code.
 
 ## The `coucou_agent` field
 
-Add the optional field `coucou_agent` to any hook JSON payload. Coucou will create a pill labelled with the agent name and route all events to it.
+Add the optional field `coucou_agent` to any hook JSON payload. Notch-Buddy will create a pill labelled with the agent name and route all events to it.
 
 **Validation:** the name must match `^[a-z0-9-]{1,24}$` (lowercase letters, digits and hyphens, 1–24 characters). An absent or invalid name routes the event to the Claude Code pill instead.
 
 ## Hook command (macOS)
 
-Configure your tool to call the Coucou relay with `--agent <your-name>` after the hook executable:
+Configure your tool to call the Notch-Buddy relay with `--agent <your-name>` after the hook executable:
 
 ```json
 {
@@ -22,7 +22,7 @@ Configure your tool to call the Coucou relay with `--agent <your-name>` after th
 }
 ```
 
-The shell wrapper passes `"$@"` to the Python relay, which extracts the agent name and injects it into the payload before forwarding to Coucou.
+The shell wrapper passes `"$@"` to the Python relay, which extracts the agent name and injects it into the payload before forwarding to Notch-Buddy.
 
 ## Hook command (Windows)
 
@@ -40,7 +40,7 @@ Same pattern with the Windows relay:
 
 ## Hook command (Linux)
 
-Same pattern with the Linux relay. Coucou copies the relay to `~/.local/share/coucou/bin/coucou-hook` at startup.
+Same pattern with the Linux relay. Notch-Buddy copies the relay to `~/.local/share/coucou/bin/coucou-hook` at startup.
 
 ```json
 {
@@ -108,10 +108,10 @@ can be declared and set as the main pill; session support is coming in a future 
 
 ### Gemini CLI (macOS)
 
-Coucou supports Gemini CLI out of the box via **Settings → Gemini CLI → Install hooks**.
+Notch-Buddy supports Gemini CLI out of the box via **Settings → Gemini CLI → Install hooks**.
 The installer writes to `~/.gemini/settings.json` and uses `--agent gemini` so
 Gemini sessions get their own pill. The relay translates Gemini event names to canonical
-Coucou events automatically.
+Notch-Buddy events automatically.
 
 | Gemini CLI event | Canonical event |
 |---|---|
@@ -124,7 +124,7 @@ Coucou events automatically.
 
 ### Antigravity — `agy` (macOS)
 
-Coucou supports Antigravity out of the box via **Settings → Antigravity → Install hooks**.
+Notch-Buddy supports Antigravity out of the box via **Settings → Antigravity → Install hooks**.
 The installer writes to `~/.gemini/config/hooks.json` (timeouts in seconds) and uses
 `--agent antigravity`. The relay translates `toolCall.name` / `conversationId` to the
 island's `tool_name` / `session_id`.
@@ -139,12 +139,12 @@ island's `tool_name` / `session_id`.
 
 ### GitHub Copilot CLI (macOS)
 
-Coucou supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.
+Notch-Buddy supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.
 The installer writes to `~/.copilot/hooks/coucou.json` and uses `--agent copilot`.
 Copilot CLI uses camelCase event names and `{"bash":"…","timeoutSec":N}` entries.
 Copilot CLI is fail-closed on `permissionRequest`: the relay always outputs valid JSON
 and returns `{"permissionDecision":"ask"}` on timeout so Copilot re-prompts in the terminal.
-Coucou shows a real Allow / Deny card for Copilot approval requests.
+Notch-Buddy shows a real Allow / Deny card for Copilot approval requests.
 
 | Copilot CLI event | Canonical event |
 |---|---|
@@ -159,9 +159,9 @@ Coucou shows a real Allow / Deny card for Copilot approval requests.
 
 ### Muse Code (macOS)
 
-Coucou supports Muse Code out of the box via **Settings → Muse Code Hooks → Install hooks**.
+Notch-Buddy supports Muse Code out of the box via **Settings → Muse Code Hooks → Install hooks**.
 The installer merges into `~/.config/muse/settings.json` and uses `--agent muse`.
-Muse uses PascalCase event names. Coucou shows a real Allow / Deny card for Muse approval requests.
+Muse uses PascalCase event names. Notch-Buddy shows a real Allow / Deny card for Muse approval requests.
 
 | Muse Code event | Canonical event |
 |---|---|
@@ -175,7 +175,7 @@ Muse uses PascalCase event names. Coucou shows a real Allow / Deny card for Muse
 
 ### Amp (macOS)
 
-Coucou supports Amp via **Settings → Amp Plugin → Install plugin**.
+Notch-Buddy supports Amp via **Settings → Amp Plugin → Install plugin**.
 The installer writes a TypeScript plugin to `~/.config/amp/plugins/coucou.ts`.
 The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; all events are forwarded display-only.
 
@@ -196,7 +196,7 @@ and let the relay forward the event.
 
 ## Quick test (Linux)
 
-With Coucou running:
+With Notch-Buddy running:
 
 ```sh
 echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
@@ -207,7 +207,7 @@ A "demo" pill should appear in the island.
 
 ## Quick test (macOS)
 
-With Coucou running:
+With Notch-Buddy running:
 
 ```sh
 echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
@@ -219,7 +219,7 @@ A "demo" pill should appear in the island.
 ## Hermes Agent (macOS, Windows, Linux)
 
 Hermes runs shell hooks declared in `~/.hermes/config.yaml`, under a top-level `hooks:` key
-(sibling of `model:`). Coucou points those entries straight at its relay — no wrapper script.
+(sibling of `model:`). Notch-Buddy points those entries straight at its relay — no wrapper script.
 Hermes sessions surface as the `agent_hermes` pill.
 
 ```yaml
@@ -243,18 +243,18 @@ The event names above come from the Hermes v0.21.3 documentation, not from a loc
 
 macOS uses `/bin/sh "<Application Support>/NotchBuddy/nb-hook" --agent hermes <event>` instead.
 
-**Hermes reads a JSON receipt on stdout.** Coucou answers with the exact same bytes on
+**Hermes reads a JSON receipt on stdout.** Notch-Buddy answers with the exact same bytes on
 macOS and Windows — the two relays assert the identical string so they cannot drift:
 
 | Decision | Receipt |
 |---|---|
 | Allow | `{}` |
 | Deny | `{"action":"block","message":"Denied from Coucou"}` |
-| Coucou open, no answer within 110 s | `{"action":"block","message":"Coucou: no answer — re-run to be asked again."}` |
-| Coucou not running | *nothing printed* — Hermes proceeds |
+| Notch-Buddy open, no answer within 110 s | `{"action":"block","message":"Coucou: no answer — re-run to be asked again."}` |
+| Notch-Buddy not running | *nothing printed* — Hermes proceeds |
 
-That last row is why Coucou does **not** set `fail_closed: true`: fail-open is what keeps the
-promise that a closed Coucou never blocks your agent. The timeout row is why a timeout denies
+That last row is why Notch-Buddy does **not** set `fail_closed: true`: fail-open is what keeps the
+promise that a closed Notch-Buddy never blocks your agent. The timeout row is why a timeout denies
 instead of silently allowing.
 
 **Consent.** Hermes will not run a shell hook until you approve that exact `(event, command)`
@@ -292,14 +292,14 @@ and you would approve every read.
 
 ## OpenCode (macOS, Windows, Linux)
 
-Coucou installs one generated plugin at `~/.config/opencode/plugins/coucou.js` — the same
+Notch-Buddy installs one generated plugin at `~/.config/opencode/plugins/coucou.js` — the same
 XDG path on every platform, which is why OpenCode works on Windows unlike Amp.
 
-The plugin forwards display events fire-and-forget: it spawns the Coucou relay, writes one
+The plugin forwards display events fire-and-forget: it spawns the Notch-Buddy relay, writes one
 JSON line, and returns without waiting. OpenCode is never slowed down.
 
 **OpenCode permissions are display-only.** OpenCode exposes `permission.asked` as an
-*observable event*, not as a hook that can return a decision, so Coucou cannot answer it.
+*observable event*, not as a hook that can return a decision, so Notch-Buddy cannot answer it.
 The permission is surfaced as a question in the ticker — answer it in OpenCode's terminal.
 
 | OpenCode event | Canonical event |

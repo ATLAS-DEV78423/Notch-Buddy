@@ -3,11 +3,11 @@
 Règle d'or : **vérifier la doc officielle au moment d'implémenter**. Les formats ci-dessous sont le plan, pas une garantie. Sources à relire :
 - Hooks Claude Code : https://code.claude.com/docs/en/hooks
 - API Claude (Messages, outil de recherche web, modèles) : https://docs.claude.com/en/api/overview
-- API publique n8n : `{URL de l'instance}/api/v1/docs` (playground de l'instance de Louis)
+- API publique n8n : `{URL de l'instance}/api/v1/docs` (playground de l'instance de ATLAS-DEV78423)
 
 ---
 
-## 1. Claude Code (sessions de Louis)
+## 1. Claude Code (sessions de ATLAS-DEV78423)
 
 ### Architecture
 ```
@@ -40,7 +40,7 @@ Vérifier dans la doc la liste exacte des événements et leurs champs.
 
 ### Approuver depuis le notch
 - Sur `PermissionRequest`, `nb-hook` **attend** la décision de l'app (défaut 110 s, réglable) puis écrit sur stdout le JSON de décision du hook (d'après la doc actuelle : `hookSpecificOutput` avec `decision.behavior` = `allow` ou `deny`). Timeout du hook dans settings.json : décision + 10 s.
-- Pas de réponse avant le délai, ou app fermée → aucune sortie, le terminal affiche sa demande habituelle. Si Louis répond dans le terminal, l'app retire l'alerte au prochain événement de la session.
+- Pas de réponse avant le délai, ou app fermée → aucune sortie, le terminal affiche sa demande habituelle. Si ATLAS-DEV78423 répond dans le terminal, l'app retire l'alerte au prochain événement de la session.
 - Un bug a été signalé où `deny` était ignoré sur `PermissionRequest` (issue GitHub anthropics/claude-code #19298). **Tester allow et deny** ; si deny ne marche pas, basculer la décision sur `PreToolUse` (`permissionDecision`) pour les outils concernés.
 - « Toujours autoriser » : si la doc permet de renvoyer une règle de permission persistante, l'utiliser. Sinon l'app garde sa propre liste (projet + outil + motif de commande) et répond `allow` automatiquement ensuite. Liste visible et supprimable dans les réglages.
 - Raccourcis Y / N quand la vue `approval` est ouverte.
@@ -71,7 +71,7 @@ Demande l'autorisation Automatisation la première fois (normal).
 1. Lire `~/.claude/settings.json` (le créer s'il n'existe pas).
 2. Copier en `~/.claude/settings.json.bak-AAAAMMJJ-HHMM`.
 3. **Fusionner** : ajouter les hooks Notch Buddy sans toucher aux hooks existants. Chemin de `nb-hook` entre guillemets (il contient un espace).
-4. Montrer le diff à Louis, attendre son OK, écrire.
+4. Montrer le diff à ATLAS-DEV78423, attendre son OK, écrire.
 5. Bouton « Désinstaller les hooks » dans les réglages qui retire uniquement les entrées Notch Buddy.
 
 ---
@@ -106,11 +106,11 @@ nb-hook.py, en mode `--statusline`, lit le JSON de stdin, en extrait `rate_limit
 
 ### Installation et activation
 
-Réglages → Agents → Plan usage → **Install relay**. Coucou montre le diff de `~/.claude/settings.json` avant d'écrire quoi que ce soit. Si une `statusLine` existait, seul le champ `command` est remplacé ; les autres champs (`padding`, `refreshInterval`, etc.) sont conservés. Une fois le relais installé, activer le toggle **Show in the notch** pour faire apparaître le pill dans l'en-tête. Si le toggle est activé avant l'installation du relais, l'installation est lancée automatiquement ; le toggle s'active après confirmation.
+Réglages → Agents → Plan usage → **Install relay**. Notch-Buddy montre le diff de `~/.claude/settings.json` avant d'écrire quoi que ce soit. Si une `statusLine` existait, seul le champ `command` est remplacé ; les autres champs (`padding`, `refreshInterval`, etc.) sont conservés. Une fois le relais installé, activer le toggle **Show in the notch** pour faire apparaître le pill dans l'en-tête. Si le toggle est activé avant l'installation du relais, l'installation est lancée automatiquement ; le toggle s'active après confirmation.
 
 ### Désinstallation
 
-Réglages → Agents → Plan usage → **Uninstall relay**. Remet l'objet `statusLine` d'origine à l'identique, ou retire la clé si elle n'existait pas. Si la `statusLine` actuelle n'est plus celle de Coucou (l'utilisateur l'a changée), elle n'est pas touchée.
+Réglages → Agents → Plan usage → **Uninstall relay**. Remet l'objet `statusLine` d'origine à l'identique, ou retire la clé si elle n'existait pas. Si la `statusLine` actuelle n'est plus celle de Notch-Buddy (l'utilisateur l'a changée), elle n'est pas touchée.
 
 ---
 
@@ -208,24 +208,24 @@ Hermes Agent et OpenCode sont des agents de premier ordre : chacun a sa pastille
 
 ### Hermes Agent
 
-- **Surface** : hooks shell déclarés dans `~/.hermes/config.yaml` (clé de premier niveau `hooks:`, voisine de `model:`), encadrés par les marqueurs `# coucou:begin` / `# coucou:end`. Pas de script d'enveloppe : l'entrée pointe directement sur le relais Coucou.
-- **Installation** : Réglages → Hermes → **Install hooks**. Coucou montre le diff de `~/.hermes/config.yaml` et écrit une sauvegarde `.bak-*` avant toute modification. Il refuse d'écrire si une clé `hooks:` étrangère existe déjà et affiche le bloc à coller.
+- **Surface** : hooks shell déclarés dans `~/.hermes/config.yaml` (clé de premier niveau `hooks:`, voisine de `model:`), encadrés par les marqueurs `# coucou:begin` / `# coucou:end`. Pas de script d'enveloppe : l'entrée pointe directement sur le relais Notch-Buddy.
+- **Installation** : Réglages → Hermes → **Install hooks**. Notch-Buddy montre le diff de `~/.hermes/config.yaml` et écrit une sauvegarde `.bak-*` avant toute modification. Il refuse d'écrire si une clé `hooks:` étrangère existe déjà et affiche le bloc à coller.
 - **Événements** : `pre_llm_call` → `UserPromptSubmit`, `pre_tool_call` → `PermissionRequest` (limité par `matcher: "terminal|write_file|patch"`), `post_tool_call` → `PostToolUse`.
-- **Approbations** : réelles. `pre_tool_call` est le seul hook Hermes qui peut bloquer un outil, donc Allow/Deny depuis l'île arrête réellement l'outil. Reçus sur stdout : `{}` (allow), `{"action":"block","message":"Denied from Coucou"}` (deny), blocage si Coucou est ouvert mais sans réponse. Coucou n'est pas `fail_closed` : app fermée = aucun octet écrit, Hermes continue.
+- **Approbations** : réelles. `pre_tool_call` est le seul hook Hermes qui peut bloquer un outil, donc Allow/Deny depuis l'île arrête réellement l'outil. Reçus sur stdout : `{}` (allow), `{"action":"block","message":"Denied from Coucou"}` (deny), blocage si Notch-Buddy est ouvert mais sans réponse. Notch-Buddy n'est pas `fail_closed` : app fermée = aucun octet écrit, Hermes continue.
 - **Consentement** : Hermes exige que chaque paire `(événement, commande)` soit approuvée dans `~/.hermes/shell-hooks-allowlist.json` ; sinon le hook est ignoré (`hermes hooks list` affiche `✗ not allowlisted`). Approuver avec `hermes --accept-hooks chat` ou `HERMES_ACCEPT_HOOKS=1`.
 
 ### OpenCode
 
 - **Surface** : un plugin généré à `~/.config/opencode/plugins/coucou.js` — le même chemin XDG sur toutes les plateformes (c'est pourquoi OpenCode fonctionne sous Windows, contrairement à Amp). Le plugin lance le relais en fire-and-forget : il n'attend jamais, OpenCode n'est jamais ralenti. Sous Windows il lance directement `coucou-hook.exe` (sans `/bin/sh`).
-- **Installation** : Réglages → OpenCode Plugin → **Install**. Coucou montre le diff et sauvegarde un `coucou.js.bak-*`. Il refuse de supprimer un fichier qui n'a pas été généré par Coucou.
-- **Approbations** : **affichage seulement.** L'API plugin d'OpenCode expose `permission.asked` comme un *événement observable*, pas comme un hook capable de renvoyer une décision : Coucou ne peut donc pas répondre. La permission s'affiche dans le fil (état question, `Allow <tool>?`) et la carte indique `Handled in OpenCode.` (macOS) — la réponse se fait dans le terminal d'OpenCode. Sous Windows, aucune carte n'est affichée : OpenCode gère sa propre invite.
+- **Installation** : Réglages → OpenCode Plugin → **Install**. Notch-Buddy montre le diff et sauvegarde un `coucou.js.bak-*`. Il refuse de supprimer un fichier qui n'a pas été généré par Notch-Buddy.
+- **Approbations** : **affichage seulement.** L'API plugin d'OpenCode expose `permission.asked` comme un *événement observable*, pas comme un hook capable de renvoyer une décision : Notch-Buddy ne peut donc pas répondre. La permission s'affiche dans le fil (état question, `Allow <tool>?`) et la carte indique `Handled in OpenCode.` (macOS) — la réponse se fait dans le terminal d'OpenCode. Sous Windows, aucune carte n'est affichée : OpenCode gère sa propre invite.
 - **Événements** : `session.created` → `SessionStart`, `session.idle` → `Stop`, `session.error` → `StopFailure`, `session.deleted` → `SessionEnd`, `session.diff` → `PostToolUse` (porte le diff), `permission.asked` → `Notification` (`Allow <tool>?`), `tool.execute.before` → `PreToolUse`, `tool.execute.after` → `PostToolUse`.
 
 ---
 
-## 2. n8n (workflows de Louis)
+## 2. n8n (workflows de ATLAS-DEV78423)
 
-- Réglages : URL de l'instance (probablement `https://n8nlouis.dcsys.tech`, **à confirmer avec Louis**) et clé API n8n (Trousseau). La clé se crée dans n8n : Settings → n8n API.
+- Réglages : URL de l'instance (probablement `https://n8nlouis.dcsys.tech`, **à confirmer avec ATLAS-DEV78423**) et clé API n8n (Trousseau). La clé se crée dans n8n : Settings → n8n API.
 - Le Mac joint n8n, pas l'inverse : **polling** toutes les 5 s de l'API publique :
   - noms des workflows : `GET /api/v1/workflows` (cache 10 min) ;
   - exécutions récentes : `GET /api/v1/executions` avec filtres de statut et `limit`.
@@ -306,7 +306,7 @@ Connexion à un serveur local compatible OpenAI. Aucune clé d'API requise.
 
 ### Connexion
 
-Réglages → Chat → Local models → **Connect**. Coucou envoie une requête `GET /v1/models` au serveur. Si le serveur répond avec des modèles, l'URL est sauvegardée et le fournisseur apparaît dans le sélecteur de modèle. Les modèles d'embedding (`nomic-embed-text`, `bge-*`, etc.) sont filtrés automatiquement.
+Réglages → Chat → Local models → **Connect**. Notch-Buddy envoie une requête `GET /v1/models` au serveur. Si le serveur répond avec des modèles, l'URL est sauvegardée et le fournisseur apparaît dans le sélecteur de modèle. Les modèles d'embedding (`nomic-embed-text`, `bge-*`, etc.) sont filtrés automatiquement.
 
 ### Streaming
 
@@ -342,7 +342,7 @@ Réglages → Chat → Local models → **Disconnect**. Efface l'URL sauvegardé
 
 ---
 
-## 7. Permissions macOS demandées (récapitulatif pour Louis)
+## 7. Permissions macOS demandées (récapitulatif pour ATLAS-DEV78423)
 
 | Permission | Pourquoi | Quand |
 |---|---|---|
