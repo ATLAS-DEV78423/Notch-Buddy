@@ -38,6 +38,11 @@ def main():
     deny = out("claude", "deny")
     assert '"behavior": "deny"' in deny, deny
     assert out("claude", "ask") is None
+    # "Always" must still persist the rule, or it silently degrades to "Allow".
+    always = out("claude", "always", ["Bash(npm test)"])
+    assert '"updatedPermissions": ["Bash(npm test)"]' in always, always
+    # Codex does not understand updatedPermissions and must not receive it.
+    assert "updatedPermissions" not in out("codex", "always", ["x"])
 
     # Copilot and Muse keep their plain shape.
     assert out("copilot", "allow") == '{"permissionDecision": "allow"}'

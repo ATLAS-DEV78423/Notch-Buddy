@@ -2572,11 +2572,13 @@ def normalize_tool_fields(payload):
     if not payload.get('cwd') and payload.get('workdir'):
         payload['cwd'] = payload['workdir']
 
-def dialect_output(agent, decision):
+def dialect_output(agent, decision, suggestions=None):
     """The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
+    `suggestions` is payload['permission_suggestions'] — Claude Code persists the
+    rule through it, so dropping it would turn "Always" into a plain "Allow".
     """
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
@@ -2601,9 +2603,14 @@ def dialect_output(agent, decision):
 
     # Claude Code and Codex: wrapped decisions, silence means "ask in the terminal".
     if decision in ('allow', 'always'):
+        body = {'behavior': 'allow'}
+        # Let Claude Code persist the rule via updatedPermissions. Only Claude Code
+        # understands this field; Codex gets a plain allow, exactly as before.
+        # Dropping this would silently turn "Always" into "Allow".
+        if decision == 'always' and agent != 'codex' and suggestions:
+            body['updatedPermissions'] = suggestions
         return json.dumps({'hookSpecificOutput': {
-            'hookEventName': 'PermissionRequest',
-            'decision': {'behavior': 'allow'}}})
+            'hookEventName': 'PermissionRequest', 'decision': body}})
     if decision == 'deny':
         return json.dumps({'hookSpecificOutput': {
             'hookEventName': 'PermissionRequest',
@@ -2788,7 +2795,8 @@ def main():
                     sys.stdout.flush()
                     sys.exit(0)
                 else:
-                    text = dialect_output(agent, decision)
+                    text = dialect_output(agent, decision,
+                                          payload.get('permission_suggestions', []))
                     if text is not None:
                         sys.stdout.write(text + '\\n')
                         sys.stdout.flush()
@@ -2890,11 +2898,13 @@ def normalize_tool_fields(payload):
     if not payload.get('cwd') and payload.get('workdir'):
         payload['cwd'] = payload['workdir']
 
-def dialect_output(agent, decision):
+def dialect_output(agent, decision, suggestions=None):
     """The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
+    `suggestions` is payload['permission_suggestions'] — Claude Code persists the
+    rule through it, so dropping it would turn "Always" into a plain "Allow".
     """
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
@@ -2919,9 +2929,14 @@ def dialect_output(agent, decision):
 
     # Claude Code and Codex: wrapped decisions, silence means "ask in the terminal".
     if decision in ('allow', 'always'):
+        body = {'behavior': 'allow'}
+        # Let Claude Code persist the rule via updatedPermissions. Only Claude Code
+        # understands this field; Codex gets a plain allow, exactly as before.
+        # Dropping this would silently turn "Always" into "Allow".
+        if decision == 'always' and agent != 'codex' and suggestions:
+            body['updatedPermissions'] = suggestions
         return json.dumps({'hookSpecificOutput': {
-            'hookEventName': 'PermissionRequest',
-            'decision': {'behavior': 'allow'}}})
+            'hookEventName': 'PermissionRequest', 'decision': body}})
     if decision == 'deny':
         return json.dumps({'hookSpecificOutput': {
             'hookEventName': 'PermissionRequest',
@@ -3105,7 +3120,8 @@ def main():
                     sys.stdout.flush()
                     sys.exit(0)
                 else:
-                    text = dialect_output(agent, decision)
+                    text = dialect_output(agent, decision,
+                                          payload.get('permission_suggestions', []))
                     if text is not None:
                         sys.stdout.write(text + '\\n')
                         sys.stdout.flush()
