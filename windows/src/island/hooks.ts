@@ -265,10 +265,10 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
 
     case "PermissionRequest": {
-      // External agents do not get an approval card — showing one would look like
-      // a Claude Code request. Decline immediately so the agent re-asks in its
-      // terminal. Approval support for other agents will come with Codex support.
-      if (isExternalAgent) {
+      // Hermes' pre_tool_call hook can block, so a decision from the island is
+      // enforceable. OpenCode's plugin API cannot return a decision, so it stays
+      // display-only: decline immediately and let OpenCode ask in its terminal.
+      if (isExternalAgent && !agentMeta(validAgent!).allowsApproval) {
         if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
         break;
       }
@@ -281,7 +281,9 @@ function handleHook(island: Island, payload: HookPayload) {
         if (requestId) void Bridge.approvalDecline(requestId);
         break;
       }
-      upsert(projectName, cwd);
+      // ensurePill() rather than the old upsert(projectName, cwd): upsert only ever
+      // touches CLAUDE_ID, so a Hermes request would have updated the wrong pill.
+      ensurePill();
       if (pendingTimeout != null) window.clearTimeout(pendingTimeout);
       const tool = payload.tool_name ?? "Tool";
       const input = payload.tool_input ?? {};
@@ -294,7 +296,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // The relay's short ack window closes in 800 ms; everything below this
       // line is synchronous, so the card really is up by the time it lands.
       if (requestId) void Bridge.approvalAck(requestId);
-      State.updateTask(CLAUDE_ID, "approval");
+      State.updateTask(agentId, "approval");
       State.isPinned = true;
       Sound.play("approval");
       if (focused) {
@@ -303,19 +305,20 @@ function handleHook(island: Island, payload: HookPayload) {
         // Another agent holds the view, so the card would yank it away. The badge
         // is the signal instead — but it has to be on screen for that to mean
         // anything, hence the reveal. We just told the relay a human can act.
-        State.setPillBadge(CLAUDE_ID, "approval");
+        State.setPillBadge(agentId, "approval");
         island.reveal();
       }
-      // Coucou answers within 108 s or not at all; after that the terminal has
-      // taken over and the card would be lying.
+      // 110 s: the same budget as the relay's DECISION_BUDGET and well under the
+      // 130 s Hermes allows. When this fires the relay prints its block receipt,
+      // so a Hermes tool call is denied rather than silently allowed.
       pendingTimeout = window.setTimeout(() => {
         pendingTimeout = null;
         if (!State.pendingApproval) return;
         State.pendingApproval = null;
         State.isPinned = false;
         island.dropPin();
-        State.updateTask(CLAUDE_ID, "working");
-        State.setPillBadge(CLAUDE_ID, null);
+        State.updateTask(agentId, "working");
+        State.setPillBadge(agentId, null);
         if (State.view === "approval") island.setView(State.defaultView());
         State.notify();
       }, 110_000);
