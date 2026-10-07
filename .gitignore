@@ -19,3 +19,7 @@ DerivedData/
 # Local only (never published)
 .claude/
 _prive/
+
+# Local tooling scratch
+.superpowers/
+graphify-out/
