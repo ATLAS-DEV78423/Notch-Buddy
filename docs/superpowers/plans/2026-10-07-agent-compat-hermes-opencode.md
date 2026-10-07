@@ -180,10 +180,28 @@ need "agent_hermes"
 need "agent_opencode"
 need "~/.hermes/config.yaml"
 need "~/.config/opencode/plugins/coucou.js"
+need "pre_llm_call"
 need "pre_tool_call"
 need "post_tool_call"
-need '{"action": "block", "message": "Denied from Coucou"}'
+need "UserPromptSubmit"
+need "PermissionRequest"
+need '{"action":"block","message":"Denied from Coucou"}'
 need "shell-hooks-allowlist.json"
+
+# The pill catalog is the single source of truth for the two agents' IDs and colours.
+# Checked here rather than in the Swift test, because that test compiles
+# AgentDialect.swift alone (see Task 4) and cannot see PillCatalog.swift.
+CAT="NotchBuddy/Sources/CoucouKit/PillCatalog.swift"
+catneed() {
+  if ! grep -qF -- "$1" "$CAT"; then
+    echo "MISSING from $CAT: $1"
+    fail=1
+  fi
+}
+catneed 'id: "agent_hermes"'
+catneed 'id: "agent_opencode"'
+catneed '#A78BFA'
+catneed '#4ADE80'
 
 if [ "$fail" -ne 0 ]; then
   echo "agent contract docs are out of date"
@@ -209,24 +227,31 @@ Hermes runs shell hooks declared in `~/.hermes/config.yaml`, under a top-level `
 
 ```yaml
 hooks:
+  pre_llm_call:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_llm_call'
+      timeout: 10
   pre_tool_call:
     - matcher: "terminal|write_file|patch"
-      command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes pre_tool_call"
+      command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_tool_call'
       timeout: 130
   post_tool_call:
-    - command: "\"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe\" --agent hermes post_tool_call"
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes post_tool_call'
       timeout: 10
 ```
 
+Note the single-quoted YAML scalars: the command contains double quotes, so a
+double-quoted scalar would need escaping that is easy to get wrong.
+
 macOS uses `/bin/sh "<Application Support>/NotchBuddy/nb-hook" --agent hermes <event>` instead.
 
-**Hermes reads a JSON receipt on stdout.** Coucou answers:
+**Hermes reads a JSON receipt on stdout.** Coucou answers with the exact same bytes on
+macOS and Windows — the two relays assert the identical string so they cannot drift:
 
 | Decision | Receipt |
 |---|---|
 | Allow | `{}` |
-| Deny | `{"action": "block", "message": "Denied from Coucou"}` |
-| Coucou open, no answer within 110 s | `{"action": "block", "message": "Coucou: no answer — re-run to be asked again."}` |
+| Deny | `{"action":"block","message":"Denied from Coucou"}` |
+| Coucou open, no answer within 110 s | `{"action":"block","message":"Coucou: no answer — re-run to be asked again."}` |
 | Coucou not running | *nothing printed* — Hermes proceeds |
 
 That last row is why Coucou does **not** set `fail_closed: true`: fail-open is what keeps the
@@ -251,11 +276,20 @@ reports drift.
 
 | Hermes shell hook | Canonical event | Notes |
 |---|---|---|
-| `pre_tool_call` | `PreToolUse` | Approval-capable when `matcher` is set |
-| `post_tool_call` | `PostToolUse` | Display only |
+| `pre_llm_call` | `UserPromptSubmit` | Once per turn — puts the prompt in the ticker and sets `thinking` |
+| `pre_tool_call` | `PermissionRequest` | **Approval-capable.** `matcher` scopes it to the tools that change something |
+| `post_tool_call` | `PostToolUse` | Display only — sets `working` |
+
+`pre_tool_call` maps to `PermissionRequest` and **not** `PreToolUse`, and that is the
+whole reason Hermes gets real approvals. Hermes has no separate permission event: its
+`pre_tool_call` hook is the only thing that can stop a tool, so for the tools the
+`matcher` selects it *is* the permission gate. Mapping it to `PreToolUse` would leave
+the relay's `waits_for_answer` false, the relay would return immediately, and Allow/Deny
+from the island would never reach Hermes.
 
 **Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated).
-Hermes `pre_tool_call` fires for every tool, so Coucou gates only the tools named in `matcher`.
+The `matcher` is what keeps this usable: without it, `pre_tool_call` fires for every tool
+and you would approve every read.
 
 ## OpenCode (macOS, Windows, Linux)
 
@@ -346,6 +380,22 @@ Append to the existing `mod tests` in `windows/hook/src/main.rs`:
     }
 
     #[test]
+    fn hermes_event_names_are_translated_to_canonical_ones() {
+        // Hermes has no separate permission event. Its `pre_tool_call` hook is the
+        // only thing that can stop a tool, so it IS the permission gate — and it
+        // must map to PermissionRequest or the relay never waits for a decision.
+        assert_eq!(canonical_event(Dialect::Hermes, "pre_tool_call"), "PermissionRequest");
+        assert_eq!(canonical_event(Dialect::Hermes, "post_tool_call"), "PostToolUse");
+        assert_eq!(canonical_event(Dialect::Hermes, "pre_llm_call"), "UserPromptSubmit");
+        // An event we do not know is forwarded untouched rather than dropped.
+        assert_eq!(canonical_event(Dialect::Hermes, "something_new"), "something_new");
+        // Every other agent already speaks the canonical vocabulary.
+        for e in ["PermissionRequest", "PreToolUse", "Stop", "SessionStart"] {
+            assert_eq!(canonical_event(Dialect::Claude, e), e);
+        }
+    }
+
+    #[test]
     fn claude_receipts_are_unchanged() {
         assert_eq!(
             decision_json(Dialect::Claude, "allow").unwrap(),
@@ -386,6 +436,30 @@ fn dialect_for(agent: &str) -> Dialect {
         "hermes" => Dialect::Hermes,
         _ => Dialect::Claude,
     }
+}
+
+/// Translate an agent's native event names into Coucou's canonical vocabulary, so
+/// one app-side handler serves every agent.
+///
+/// `pre_tool_call` becomes `PermissionRequest`, **not** `PreToolUse`: Hermes has no
+/// separate permission event, and its `pre_tool_call` hook is the only thing that can
+/// stop a tool — so for the tools the `matcher` selects, it *is* the permission gate.
+/// Mapping it to `PreToolUse` would leave `waits_for_answer` false, the relay would
+/// never wait, and Allow/Deny from the island would be unreachable.
+///
+/// An unrecognised event is forwarded untouched rather than dropped, so a future
+/// Hermes event still shows up in the island as an unknown event instead of vanishing.
+fn canonical_event(dialect: Dialect, raw: &str) -> String {
+    if dialect != Dialect::Hermes {
+        return raw.to_string();
+    }
+    match raw {
+        "pre_llm_call" => "UserPromptSubmit",
+        "pre_tool_call" => "PermissionRequest",
+        "post_tool_call" => "PostToolUse",
+        other => other,
+    }
+    .to_string()
 }
 
 /// The receipt for a decision the human actually made.
@@ -459,13 +533,33 @@ Then update `main()` to use them. Replace the body after `let (tx, rx) = mpsc::c
     std::process::exit(0);
 ```
 
-`agent_name` must be surfaced from `read_event`. Change its signature to return it:
+`agent_name` must be surfaced from `read_event`, and the event must be canonicalised
+**before** it is written into the forwarded payload — the app routes on the payload's
+`hook_event_name`, so translating only in `main()` would leave the app seeing
+`pre_tool_call` while the relay waits on `PermissionRequest`. Change the signature to
+return the agent:
 
 ```rust
 fn read_event() -> Option<(String, String, String)> {
 ```
 
-and at the end:
+Replace the block inside `read_event` that resolves and stores the event with:
+
+```rust
+    let raw_event = map
+        .get("hook_event_name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(arg_event);
+
+    // Translate before forwarding: the app routes on this exact field.
+    let dialect = dialect_for(&agent);
+    let event = canonical_event(dialect, &raw_event);
+    map.insert("hook_event_name".into(), serde_json::Value::String(event.clone()));
+```
+
+and at the end of the function, after `truncate_strings(&mut payload);`:
 
 ```rust
     let mut line = payload.to_string();
@@ -545,10 +639,13 @@ def main():
     # Hermes: {} allows, a block object denies, and a missing answer denies too.
     assert out("hermes", "allow") == "{}", out("hermes", "allow")
     assert out("hermes", "always") == "{}"
-    assert out("hermes", "deny") == '{"action": "block", "message": "Denied from Coucou"}'
+    assert out("hermes", "deny") == '{"action":"block","message":"Denied from Coucou"}'
     no_answer = out("hermes", "ask")
-    assert no_answer is not None and '"action": "block"' in no_answer, no_answer
+    assert no_answer is not None and '"action":"block"' in no_answer, no_answer
     assert "no answer" in no_answer
+    # Byte-identical to the Rust relay's receipt, so the two platforms cannot drift.
+    assert no_answer == '{"action":"block","message":"Coucou: no answer — re-run to be asked again."}', \
+        repr(no_answer)
 
     # Claude Code is untouched: allow/deny are wrapped, silence means "terminal asks".
     allow = out("claude", "allow")
@@ -622,9 +719,8 @@ def dialect_output(agent, decision):
         if decision in ('allow', 'always'):
             return '{}'
         if decision == 'deny':
-            return '{"action": "block", "message": "Denied from Coucou"}'
-        return ('{"action": "block", "message": '
-                '"Coucou: no answer \\u2014 re-run to be asked again."}')
+            return '{"action":"block","message":"Denied from Coucou"}'
+        return '{"action":"block","message":"Coucou: no answer — re-run to be asked again."}'
 
     # Copilot and Muse take a plain permissionDecision.
     if agent in ('copilot', 'muse'):
@@ -698,14 +794,23 @@ The macOS app needs to answer three questions in several places: which dialect d
 - Modify: `NotchBuddy/Sources/CoucouKit/PillCatalog.swift` (add the two pills)
 
 **Interfaces:**
-- Consumes: `PillCatalog` (same module).
+- Consumes: nothing. **`AgentDialect.swift` imports only `Foundation`.**
 - Produces:
   - `enum AgentDialect: String { case claude, hermes, opencode }`
   - `init?(agent: String)`
   - `var allowsApproval: Bool`
   - `func decisionJSON(_ decision: String) -> String?`
   - `func noAnswerJSON() -> String?`
-  - `static func pillColor(forAgent agent: String) -> String?`
+
+**Why this file has no dependencies.** The first draft of this task had `AgentDialect`
+read the pill colour out of `PillCatalog`, which meant the test had to compile
+`PillCatalog.swift` and `IslandTypes.swift` too — and `IslandTypes.swift` reaches
+`IslandScreenGeometry` and `EyeShape` in `BotEngine.swift`, which pulls in SwiftUI, the
+wardrobe and the outfit drawing. The test could never run, so the file would have shipped
+with no verification at all. Instead, `AgentDialect` knows nothing about pills, and the
+catalog lookup happens at the call site in `HookServer.swift` (Task 7), where
+`PillCatalog` is already in scope. Same single source of truth for the colour, one fewer
+dependency, and a test that actually runs.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -757,20 +862,11 @@ check(AgentDialect.opencode.noAnswerJSON() == nil, "OpenCode never blocks")
 checkEqual(AgentDialect.opencode.decisionJSON("allow"), "{}", "OpenCode's receipt is a no-op {}")
 checkEqual(AgentDialect.opencode.decisionJSON("deny"), "{}", "OpenCode ignores decisions")
 
-// MARK: - Pill colours come from the catalog, not a hash
+// MARK: - Pill catalogue (checked by grep in scripts/test-agent-docs.sh)
 
-checkEqual(AgentDialect.pillColor(forAgent: "hermes"), "#A78BFA", "Hermes uses its catalog colour")
-checkEqual(AgentDialect.pillColor(forAgent: "opencode"), "#4ADE80", "OpenCode uses its catalog colour")
-check(AgentDialect.pillColor(forAgent: "some-unlisted-agent") == nil, "unlisted agents fall back to the hash")
-
-// MARK: - Catalog
-
-check(PillCatalog.definition(for: "agent_hermes") != nil, "agent_hermes is declared")
-check(PillCatalog.definition(for: "agent_opencode") != nil, "agent_opencode is declared")
-checkEqual(PillCatalog.definition(for: "agent_hermes")?.name, "Hermes", "Hermes pill name")
-checkEqual(PillCatalog.definition(for: "agent_opencode")?.name, "OpenCode", "OpenCode pill name")
-checkEqual(PillCatalog.definition(for: "agent_hermes")?.category, .agent, "Hermes is an agent pill")
-check(PillCatalog.definition(for: "agent_hermes")?.githubOnly == true, "Hermes stays out of the App Store build")
+// The catalogue assertions live in scripts/test-agent-docs.sh rather than here,
+// because this file must compile with AgentDialect.swift alone. Keeping
+// PillCatalog.swift out of the compile set is what makes this test runnable at all.
 
 if failures > 0 { print("\(failures) failure(s)"); exit(1) }
 print("AgentDialect tests passed")
@@ -786,15 +882,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/coucou-agent-dialect.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
-swiftc NotchBuddy/Sources/CoucouKit/PillCatalog.swift \
-    NotchBuddy/Sources/CoucouKit/AgentDialect.swift \
-    NotchBuddy/Sources/CoucouKit/IslandTypes.swift \
+# AgentDialect.swift imports only Foundation, so it compiles with the test alone.
+# Do NOT add PillCatalog.swift or IslandTypes.swift here: IslandTypes reaches
+# IslandScreenGeometry and EyeShape in BotEngine.swift, which pulls in SwiftUI, the
+# wardrobe and the outfit drawing, and the build never finishes.
+swiftc NotchBuddy/Sources/CoucouKit/AgentDialect.swift \
     tests/AgentDialectTests.swift -o "$TEST_DIR/agent-dialect-tests"
 "$TEST_DIR/agent-dialect-tests"
 ```
 
 Run: `bash scripts/test-agent-dialect.sh`
-Expected: FAIL to compile — `cannot find 'AgentDialect' in scope`. (If `IslandTypes.swift` drags in SwiftUI and breaks standalone compilation, add only the files the compiler names, and note it in the script's comment.)
+Expected: FAIL to compile — `cannot find 'AgentDialect' in scope`.
 
 - [ ] **Step 3: Add the two pills**
 
@@ -885,14 +983,11 @@ enum AgentDialect: String {
             return nil
         }
     }
-
-    /// The pill colour declared in `PillCatalog`, or nil when the agent is not
-    /// declared and the caller should fall back to the hashed project colour.
-    static func pillColor(forAgent agent: String) -> String? {
-        PillCatalog.definition(for: "agent_\(agent)")?.color
-    }
 }
 ```
+
+Note there is no `pillColor` here. The catalog lookup lives at the call site in
+`HookServer.swift` (Task 7) so this file stays dependency-free and testable.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -939,6 +1034,7 @@ let block = AgentDialect.hermesConfigBlock(hookCommand: cmd)
 
 check(block.hasPrefix(AgentDialect.hermesBeginMarker), "the block opens with the begin marker")
 check(block.hasSuffix(AgentDialect.hermesEndMarker), "the block closes with the end marker")
+check(block.contains("pre_llm_call:"), "the per-turn hook is declared")
 check(block.contains("pre_tool_call:"), "the gate hook is declared")
 check(block.contains("post_tool_call:"), "the observer hook is declared")
 check(block.contains("timeout: 130"), "the gate outlives the relay's 110 s budget")
@@ -1017,9 +1113,17 @@ extension AgentDialect {
         // Single-quoted YAML scalars: the command itself contains double quotes
         // (the quoted relay path), and nesting them inside a double-quoted scalar
         // would need escaping that is easy to get wrong and impossible to read.
+        //
+        // Three entries, because Hermes has no permission event of its own:
+        //   pre_llm_call  -> UserPromptSubmit  (the prompt, in the ticker)
+        //   pre_tool_call -> PermissionRequest (the gate; `matcher` scopes it)
+        //   post_tool_call-> PostToolUse       (working)
         """
         \(hermesBeginMarker) — managed by Coucou. Edits inside these markers are overwritten.
         hooks:
+          pre_llm_call:
+            - command: '\(hookCommand) pre_llm_call'
+              timeout: 10
           pre_tool_call:
             - matcher: "\(hermesGateMatcher)"
               command: '\(hookCommand) pre_tool_call'
@@ -1221,6 +1325,10 @@ const EVENT_MAP = {
   'session.idle': 'Stop',
   'session.error': 'StopFailure',
   'session.deleted': 'SessionEnd',
+  // session.diff must be in the map, or the early `if (!hook_event_name) return`
+  // below swallows it and the per-file diff branch becomes dead code. The branch
+  // handles it specially and returns, so the generic path never sees it.
+  'session.diff': 'PostToolUse',
   'permission.asked': 'Notification',
 };
 
@@ -1351,7 +1459,10 @@ with:
 ```swift
         // Declared agents take their colour from PillCatalog — the single source of
         // truth. Undeclared agents keep the hashed project colour they always had.
-        let color = AgentDialect.pillColor(forAgent: name) ?? IslandConst.colorForProject(name)
+        // The lookup lives here rather than in AgentDialect so that file stays
+        // dependency-free and testable (see Task 4).
+        let color = PillCatalog.definition(for: "agent_\(name)")?.color
+            ?? IslandConst.colorForProject(name)
 ```
 
 - [ ] **Step 2: Add the note text**
@@ -1802,6 +1913,10 @@ const EVENT_MAP = {
   'session.idle': 'Stop',
   'session.error': 'StopFailure',
   'session.deleted': 'SessionEnd',
+  // session.diff must be in the map, or the early `if (!hook_event_name) return`
+  // below swallows it and the per-file diff branch becomes dead code. The branch
+  // handles it specially and returns, so the generic path never sees it.
+  'session.diff': 'PostToolUse',
   'permission.asked': 'Notification',
 };
 
@@ -2003,6 +2118,7 @@ Append to `mod tests` in `windows/src-tauri/src/agents.rs`:
         let block = hermes_config_block(r#""C:/x/coucou-hook.exe" --agent hermes"#);
         assert!(block.starts_with(HERMES_BEGIN));
         assert!(block.ends_with(HERMES_END));
+        assert!(block.contains("pre_llm_call:"));
         assert!(block.contains("pre_tool_call:"));
         assert!(block.contains("post_tool_call:"));
         assert!(block.contains("matcher:"));
@@ -2078,6 +2194,9 @@ pub fn hermes_config_block(hook_command: &str) -> String {
     format!(
         "{HERMES_BEGIN} — managed by Coucou. Edits inside these markers are overwritten.\n\
          hooks:\n\
+         \x20 pre_llm_call:\n\
+         \x20   - command: '{hook_command} pre_llm_call'\n\
+         \x20     timeout: 10\n\
          \x20 pre_tool_call:\n\
          \x20   - matcher: \"{HERMES_GATE_MATCHER}\"\n\
          \x20     command: '{hook_command} pre_tool_call'\n\
@@ -2476,7 +2595,17 @@ The last functional gap. Today every external agent's `PermissionRequest` is dec
 
 **Interfaces:**
 - Consumes: `agentMeta` (Task 8), `validateAgent` (existing).
-- Produces: `agent_hermes` reaches the approval card; `agent_opencode` gets the `Handled in OpenCode.` note.
+- Produces: `agent_hermes` reaches the approval card.
+
+**Scope note — no `Handled in OpenCode.` note on Windows.** An earlier draft of this task
+listed that note as a deliverable. It was dropped: on macOS the string lives in
+`HookServer.swift`'s `note`/`handledNote` switches, which are rendered alongside a card
+that briefly appears. Windows has no such surface — a declined external request calls
+`Bridge.approvalDecline` and shows no card at all, and the card's text comes from
+`approvalTarget(tool, input)`. Adding the note would mean inventing a UI affordance the
+Windows app does not have, for a string the user never sees. The behaviour is already
+correct and unchanged: OpenCode answers its own permission prompt in its terminal. The
+`Handled in OpenCode.` copy stays macOS-only (Task 7).
 
 - [ ] **Step 1: Allow approval-capable agents through**
 
