@@ -1593,7 +1593,7 @@ final class HookServer: @unchecked Sendable {
                 NSLocalizedDescriptionKey: "~/.gemini/settings.json changed since preview. Refresh and try again."
             ])
         }
-        try writeJSONFile(data, to: url, suffix: "settings.json")
+        try writeTextFile(data, to: url, suffix: "settings.json")
         _pendingGeminiData = nil
         _pendingGeminiFingerprint = nil
     }
@@ -1689,7 +1689,7 @@ final class HookServer: @unchecked Sendable {
                 NSLocalizedDescriptionKey: "~/.gemini/config/hooks.json changed since preview. Refresh and try again."
             ])
         }
-        try writeJSONFile(data, to: url, suffix: "hooks.json")
+        try writeTextFile(data, to: url, suffix: "hooks.json")
         _pendingAgyData = nil
         _pendingAgyFingerprint = nil
     }
@@ -1754,7 +1754,7 @@ final class HookServer: @unchecked Sendable {
     }
 
     /// Backs up the existing file (throws on failure), creates parent dirs, then atomically writes.
-    private func writeJSONFile(_ data: Data, to url: URL, suffix: String) throws {
+    private func writeTextFile(_ data: Data, to url: URL, suffix: String) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: url.path) {
             let fmt = DateFormatter()
@@ -1844,7 +1844,7 @@ final class HookServer: @unchecked Sendable {
                 NSLocalizedDescriptionKey: "~/.codex/hooks.json changed since preview. Refresh and try again."
             ])
         }
-        try writeJSONFile(data, to: url, suffix: "hooks.json")
+        try writeTextFile(data, to: url, suffix: "hooks.json")
         _pendingCodexData = nil
         _pendingCodexFingerprint = nil
     }
@@ -1970,7 +1970,7 @@ final class HookServer: @unchecked Sendable {
             ])
         }
         if let data = _pendingCopilotData {
-            try writeJSONFile(data, to: url, suffix: "coucou.json")
+            try writeTextFile(data, to: url, suffix: "coucou.json")
         } else {
             // Uninstall: delete the file entirely
             try FileManager.default.removeItem(at: url)
@@ -2090,7 +2090,7 @@ final class HookServer: @unchecked Sendable {
                 NSLocalizedDescriptionKey: "~/.config/muse/settings.json changed since preview. Refresh and try again."
             ])
         }
-        try writeJSONFile(data, to: url, suffix: "settings.json")
+        try writeTextFile(data, to: url, suffix: "settings.json")
         _pendingMuseData = nil
         _pendingMuseFingerprint = nil
     }
@@ -2157,6 +2157,61 @@ final class HookServer: @unchecked Sendable {
         }
         return try JSONSerialization.data(withJSONObject: settings,
                                          options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    // MARK: - Hermes Agent hook installer
+
+    static var hermesConfigURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes/config.yaml")
+    }
+
+    /// The command Hermes runs. /bin/sh keeps the space in "Application Support" a
+    /// path, exactly like every other macOS hook we install.
+    static var hermesHookCommand: String {
+        "/bin/sh \"\(hookScriptPath)\" --agent hermes"
+    }
+
+    static func hermesHooksInstalled() -> Bool {
+        guard let text = try? String(contentsOf: hermesConfigURL, encoding: .utf8) else { return false }
+        return text.contains(AgentDialect.hermesBeginMarker)
+    }
+
+    private var _pendingHermesData: Data?
+    private var _pendingHermesFingerprint: String?
+
+    func previewHermesHooks(install: Bool) throws -> String {
+        let url = Self.hermesConfigURL
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        if !install && !exists {
+            throw NSError(domain: "CoucouNoop", code: 0, userInfo: [
+                NSLocalizedDescriptionKey: "No Hermes hooks to remove."
+            ])
+        }
+        let current = exists ? try Data(contentsOf: url) : Data()
+        _pendingHermesFingerprint = sha256Hex(current)
+        let text = exists ? (String(data: current, encoding: .utf8) ?? "") : ""
+        let merged = try AgentDialect.mergeHermesConfig(
+            existing: text,
+            hookCommand: install ? Self.hermesHookCommand : nil
+        ).get()
+        let data = Data(merged.utf8)
+        _pendingHermesData = data
+        return merged
+    }
+
+    func writeHermesHooks() throws {
+        guard let data = _pendingHermesData, let fp = _pendingHermesFingerprint else { return }
+        let url = Self.hermesConfigURL
+        let current = (try? Data(contentsOf: url)) ?? Data()
+        guard sha256Hex(current) == fp else {
+            throw NSError(domain: "Coucou", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "~/.hermes/config.yaml changed since preview. Refresh and try again."
+            ])
+        }
+        try writeTextFile(data, to: url, suffix: "config.yaml")
+        _pendingHermesData = nil
+        _pendingHermesFingerprint = nil
     }
 
     // MARK: - OpenCode plugin installer

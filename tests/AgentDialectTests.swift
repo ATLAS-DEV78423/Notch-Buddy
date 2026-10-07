@@ -63,6 +63,56 @@ enum AgentDialectTests {
         // because this file must compile with AgentDialect.swift alone. Keeping
         // PillCatalog.swift out of the compile set is what makes this test runnable at all.
 
+        // MARK: - Hermes config.yaml block
+
+        let cmd = "/bin/sh '/Users/x/Library/Application Support/NotchBuddy/nb-hook' --agent hermes"
+        let block = AgentDialect.hermesConfigBlock(hookCommand: cmd)
+
+        check(block.hasPrefix(AgentDialect.hermesBeginMarker), "the block opens with the begin marker")
+        check(block.hasSuffix(AgentDialect.hermesEndMarker), "the block closes with the end marker")
+        check(block.contains("pre_llm_call:"), "the per-turn hook is declared")
+        check(block.contains("pre_tool_call:"), "the gate hook is declared")
+        check(block.contains("post_tool_call:"), "the observer hook is declared")
+        check(block.contains("timeout: 130"), "the gate outlives the relay's 110 s budget")
+        check(!block.contains("fail_closed"), "fail_closed is never set — a closed Coucou must not block Hermes")
+        check(block.contains("matcher:"), "the gate is scoped with a matcher")
+        // The command contains double quotes (the relay path), so the YAML scalar must be
+        // single-quoted or the file will not parse. This is the bug this check exists for.
+        check(block.contains("command: '"), "commands are single-quoted YAML scalars")
+        check(!block.contains("command: \""), "no command is a double-quoted YAML scalar")
+
+        // A file with no hooks: key gets the block appended, and everything before survives.
+        let fresh = try! AgentDialect.mergeHermesConfig(
+            existing: "model: opus\nprofile: default\n", hookCommand: cmd).get()
+        check(fresh.hasPrefix("model: opus\nprofile: default\n"), "existing content is preserved")
+        check(fresh.contains(AgentDialect.hermesBeginMarker), "the block was appended")
+        check(fresh.contains("hooks:"), "the top-level hooks key was added")
+
+        // Idempotent: installing twice does not stack blocks.
+        let twice = try! AgentDialect.mergeHermesConfig(existing: fresh, hookCommand: cmd).get()
+        checkEqual(
+            twice.components(separatedBy: AgentDialect.hermesBeginMarker).count,
+            fresh.components(separatedBy: AgentDialect.hermesBeginMarker).count,
+            "re-installing replaces the block instead of appending a second one"
+        )
+
+        // Uninstall leaves the user's own content byte-for-byte.
+        let cleaned = AgentDialect.mergeHermesConfig(existing: fresh, hookCommand: nil).get()
+        checkEqual(cleaned, "model: opus\nprofile: default\n", "uninstall restores the original file")
+
+        // A foreign hooks: key is refused rather than merged. We do not own their YAML.
+        let foreign = "model: opus\nhooks:\n  pre_llm_call:\n    - command: mine.sh\n"
+        switch AgentDialect.mergeHermesConfig(existing: foreign, hookCommand: cmd) {
+        case .success: check(false, "a foreign hooks: key must be refused")
+        case .failure(let message):
+            check(message.contains("hooks:"), "the refusal names the conflicting key")
+            check(message.contains("paste"), "the refusal tells the user what to do instead")
+        }
+
+        // An empty or missing file is fine.
+        check(try! AgentDialect.mergeHermesConfig(existing: "", hookCommand: cmd).get()
+                .contains("pre_tool_call:"), "an empty config is seeded")
+
         if failures > 0 { print("\(failures) failure(s)"); exit(1) }
         print("AgentDialect tests passed")
     }
