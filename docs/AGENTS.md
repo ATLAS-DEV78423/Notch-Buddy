@@ -73,11 +73,10 @@ Send newline-terminated JSON to the socket:
 
 ## Supported events
 
-All standard Claude Code hook events are supported, **except `PermissionRequest`**:
-approval cards are not yet implemented for third-party agents (only Claude Code gets
-one). A `PermissionRequest` from an external agent is answered immediately with no
-decision, so the relay writes nothing and the agent re-asks in its terminal.
-Approval support for other agents will be added with Codex support.
+All standard Claude Code hook events are supported. `PermissionRequest` is supported for
+Claude Code, Codex, Copilot CLI, Muse Code and Hermes. For every other third-party agent an
+approval card is not offered — the relay answers with no decision and the agent re-asks in
+its terminal.
 
 The pill lifecycle:
 
@@ -100,10 +99,10 @@ A **declared pill** is a catalog entry (`PillCatalog.swift`) that has been enabl
 A catalog pill that is not checked in Settings behaves like any other agent: it gets an automatic pill when a session starts, and that pill is removed when the session ends.
 
 The GitHub build exposes Gemini CLI (`agent_gemini`), Antigravity (`agent_antigravity`),
-GitHub Copilot CLI (`agent_copilot`), Muse Code (`agent_muse`), OpenCode (`agent_opencode`)
-and Amp (`agent_amp`) in Settings → Active pills. Cursor (`agent_cursor`) and Codex
-(`agent_codex`, GitHub build only) are there too — their pills can be declared and set as
-the main pill; session support is coming in a future version.
+GitHub Copilot CLI (`agent_copilot`), Muse Code (`agent_muse`), OpenCode (`agent_opencode`),
+Hermes (`agent_hermes`) and Amp (`agent_amp`) in Settings → Active pills. Cursor
+(`agent_cursor`) and Codex (`agent_codex`, GitHub build only) are there too — their pills
+can be declared and set as the main pill; session support is coming in a future version.
 
 ## Real-world examples
 
@@ -173,22 +172,6 @@ Muse uses PascalCase event names. Coucou shows a real Allow / Deny card for Muse
 | `PostToolUse` | `PostToolUse` |
 | `Stop` | `Stop` |
 | `SessionEnd` | `SessionEnd` |
-
-### OpenCode (macOS)
-
-Coucou supports OpenCode via **Settings → OpenCode Plugin → Install plugin**.
-The installer writes a JS plugin to `~/.config/opencode/plugins/coucou.js`.
-The plugin maps OpenCode event types to canonical Coucou names and forwards them fire-and-forget; OpenCode is never blocked.
-
-| OpenCode event | Canonical event |
-|---|---|
-| `session.created` | `SessionStart` |
-| `session.idle` | `Stop` |
-| `session.error` | `StopFailure` |
-| `session.deleted` | `SessionEnd` |
-| `tool.execute.before` | `PreToolUse` |
-| `tool.execute.after` | `PostToolUse` |
-| `permission.asked` | `PermissionRequest` |
 
 ### Amp (macOS)
 
