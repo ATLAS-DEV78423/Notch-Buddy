@@ -71,10 +71,4 @@ enum AgentDialect: String {
             return nil
         }
     }
-
-    /// The pill colour declared in `PillCatalog`, or nil when the agent is not
-    /// declared and the caller should fall back to the hashed project colour.
-    static func pillColor(forAgent agent: String) -> String? {
-        PillCatalog.definition(for: "agent_\(agent)")?.color
-    }
 }

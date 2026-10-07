@@ -2,11 +2,13 @@ import Foundation
 
 // Assert-based harness, matching tests/DiffEngineTests.swift.
 //
-// Note on shape: this file is compiled by scripts/test-agent-dialect.sh alongside
-// PillCatalog.swift / AgentDialect.swift / IslandTypes.swift. swiftc only permits
-// top-level statements in a file literally named main.swift, so the harness is an
-// @main enum (the same shape every other test in tests/ uses) rather than bare
-// top-level code.
+// Note on shape: swiftc only permits top-level statements in a file literally
+// named main.swift, so the harness is an @main enum (the same shape every other
+// test in tests/ uses) rather than bare top-level code.
+//
+// This file must compile with AgentDialect.swift alone. AgentDialect.swift
+// imports only Foundation, so scripts/test-agent-dialect.sh compiles exactly
+// those two files and nothing else — no PillCatalog.swift, no IslandTypes.swift.
 @main
 enum AgentDialectTests {
 
@@ -55,20 +57,11 @@ enum AgentDialectTests {
         checkEqual(AgentDialect.opencode.decisionJSON("allow"), "{}", "OpenCode's receipt is a no-op {}")
         checkEqual(AgentDialect.opencode.decisionJSON("deny"), "{}", "OpenCode ignores decisions")
 
-        // MARK: - Pill colours come from the catalog, not a hash
+        // MARK: - Pill catalogue (checked by grep in scripts/test-agent-docs.sh)
 
-        checkEqual(AgentDialect.pillColor(forAgent: "hermes"), "#A78BFA", "Hermes uses its catalog colour")
-        checkEqual(AgentDialect.pillColor(forAgent: "opencode"), "#4ADE80", "OpenCode uses its catalog colour")
-        check(AgentDialect.pillColor(forAgent: "some-unlisted-agent") == nil, "unlisted agents fall back to the hash")
-
-        // MARK: - Catalog
-
-        check(PillCatalog.definition(for: "agent_hermes") != nil, "agent_hermes is declared")
-        check(PillCatalog.definition(for: "agent_opencode") != nil, "agent_opencode is declared")
-        checkEqual(PillCatalog.definition(for: "agent_hermes")?.name, "Hermes", "Hermes pill name")
-        checkEqual(PillCatalog.definition(for: "agent_opencode")?.name, "OpenCode", "OpenCode pill name")
-        checkEqual(PillCatalog.definition(for: "agent_hermes")?.category, .agent, "Hermes is an agent pill")
-        check(PillCatalog.definition(for: "agent_hermes")?.githubOnly == true, "Hermes stays out of the App Store build")
+        // The catalogue assertions live in scripts/test-agent-docs.sh rather than here,
+        // because this file must compile with AgentDialect.swift alone. Keeping
+        // PillCatalog.swift out of the compile set is what makes this test runnable at all.
 
         if failures > 0 { print("\(failures) failure(s)"); exit(1) }
         print("AgentDialect tests passed")
