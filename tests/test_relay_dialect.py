@@ -128,6 +128,17 @@ def main():
     assert norm("pre_tool_call") == "PermissionRequest", norm("pre_tool_call")
     assert norm("post_tool_call") == "PostToolUse", norm("post_tool_call")
     assert norm("pre_llm_call") == "UserPromptSubmit", norm("pre_llm_call")
+
+    # The lifecycle events. Deleting any one of these mappings lets a Hermes
+    # session leak its pill (never created / never removed) or lose subagent
+    # activity, so each is pinned individually — the pure-dialect assertions
+    # above would not notice a dropped mapping.
+    assert norm("on_session_start") == "SessionStart", norm("on_session_start")
+    assert norm("on_session_end") == "SessionEnd", norm("on_session_end")
+    assert norm("subagent_start") == "SubagentStart", norm("subagent_start")
+    assert norm("subagent_stop") == "SubagentStop", norm("subagent_stop")
+    assert norm("post_llm_call") == "Stop", norm("post_llm_call")
+
     # An unknown event is forwarded untouched rather than dropped.
     assert norm("something_new") == "something_new", norm("something_new")
 
