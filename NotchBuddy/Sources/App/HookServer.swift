@@ -2181,7 +2181,15 @@ final class HookServer: @unchecked Sendable {
     // MARK: - Hermes Agent hook installer
 
     static var hermesConfigURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        // `$HERMES_HOME` wins; otherwise the POSIX default `~/.hermes` is correct on
+        // macOS. Windows is the odd one out: its Hermes reads
+        // `%LOCALAPPDATA%\hermes`, not `~/.hermes` — see `hermes_home()` in
+        // windows/src-tauri/src/agents.rs. The two must agree, or the installer
+        // reports success and Hermes never loads the hook.
+        if let home = ProcessInfo.processInfo.environment["HERMES_HOME"], !home.isEmpty {
+            return URL(fileURLWithPath: home).appendingPathComponent("config.yaml")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".hermes/config.yaml")
     }
 
@@ -2340,15 +2348,17 @@ export const CoucouPlugin = async (ctx) => {
       forward(hook_event_name, payload);
     },
 
-    'tool.execute.before': async (input) => {
+    'tool.execute.before': async (input, output) => {
       forward('PreToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',
-        tool_input: input.input ?? null,
+        // The SDK passes tool arguments on the second parameter (`output.args`),
+        // not on `input`. Reading `input.input` forwarded null for every tool.
+        tool_input: output?.args ?? null,
       });
     },
 
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': async (input, output) => {
       forward('PostToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',
@@ -2612,6 +2622,15 @@ def normalize_event(name):
         'pre_llm_call': 'UserPromptSubmit',
         'pre_tool_call': 'PermissionRequest',
         'post_tool_call': 'PostToolUse',
+        # Session and subagent lifecycle. Without these the pill is never created
+        # cleanly on session start and never torn down on session end, and a
+        # subagent's activity is invisible.
+        'on_session_start': 'SessionStart',
+        'on_session_end': 'SessionEnd',
+        'subagent_start': 'SubagentStart',
+        'subagent_stop': 'SubagentStop',
+        # post_llm_call ends a turn; Hermes has no separate Stop event.
+        'post_llm_call': 'Stop',
     }
     return mapping.get(name, name)
 
@@ -2655,13 +2674,13 @@ def normalize_tool_fields(payload):
         payload['cwd'] = payload['workdir']
 
 def dialect_output(agent, decision, suggestions=None):
-    """The exact stdout for (agent, decision), or None to print nothing.
+    '''The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
     `suggestions` is payload['permission_suggestions'] — Claude Code persists the
     rule through it, so dropping it would turn "Always" into a plain "Allow".
-    """
+    '''
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
     if agent == 'hermes':
@@ -2958,6 +2977,15 @@ def normalize_event(name):
         'pre_llm_call': 'UserPromptSubmit',
         'pre_tool_call': 'PermissionRequest',
         'post_tool_call': 'PostToolUse',
+        # Session and subagent lifecycle. Without these the pill is never created
+        # cleanly on session start and never torn down on session end, and a
+        # subagent's activity is invisible.
+        'on_session_start': 'SessionStart',
+        'on_session_end': 'SessionEnd',
+        'subagent_start': 'SubagentStart',
+        'subagent_stop': 'SubagentStop',
+        # post_llm_call ends a turn; Hermes has no separate Stop event.
+        'post_llm_call': 'Stop',
     }
     return mapping.get(name, name)
 
@@ -3001,13 +3029,13 @@ def normalize_tool_fields(payload):
         payload['cwd'] = payload['workdir']
 
 def dialect_output(agent, decision, suggestions=None):
-    """The exact stdout for (agent, decision), or None to print nothing.
+    '''The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
     `suggestions` is payload['permission_suggestions'] — Claude Code persists the
     rule through it, so dropping it would turn "Always" into a plain "Allow".
-    """
+    '''
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
     if agent == 'hermes':

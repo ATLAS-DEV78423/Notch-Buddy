@@ -99,10 +99,17 @@ extension AgentDialect {
         // (the quoted relay path), and nesting them inside a double-quoted scalar
         // would need escaping that is easy to get wrong and impossible to read.
         //
-        // Three entries, because Hermes has no permission event of its own:
+        // Seven entries, because Hermes has no permission event of its own:
         //   pre_llm_call  -> UserPromptSubmit  (the prompt, in the ticker)
         //   pre_tool_call -> PermissionRequest (the gate; `matcher` scopes it)
         //   post_tool_call-> PostToolUse       (working)
+        //   on_session_start / on_session_end / subagent_start / subagent_stop
+        //                 -> the lifecycle events, so the pill is created and torn
+        //                    down cleanly instead of leaking.
+        //
+        // Only `pre_tool_call` carries a `matcher` or the long timeout: Hermes
+        // honours a block directive on that event alone (shell_hooks.py:
+        // _BLOCKING_EVENTS). The other six are observers at timeout: 10.
         """
         \(hermesBeginMarker) — managed by Coucou. Edits inside these markers are overwritten.
         hooks:
@@ -115,6 +122,18 @@ extension AgentDialect {
               timeout: 130
           post_tool_call:
             - command: '\(hookCommand) post_tool_call'
+              timeout: 10
+          on_session_start:
+            - command: '\(hookCommand) on_session_start'
+              timeout: 10
+          on_session_end:
+            - command: '\(hookCommand) on_session_end'
+              timeout: 10
+          subagent_start:
+            - command: '\(hookCommand) subagent_start'
+              timeout: 10
+          subagent_stop:
+            - command: '\(hookCommand) subagent_stop'
               timeout: 10
         \(hermesEndMarker)
         """
