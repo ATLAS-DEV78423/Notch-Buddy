@@ -14,6 +14,25 @@ extract_relay() {
     ' NotchBuddy/Sources/App/HookServer.swift > "$2"
 }
 
+# The extractor above only matches a closer at column 0, so it is blind to a `"""`
+# that ends a literal early from *inside* it — an indented docstring, say. Swift
+# ends a multiline literal at the first unescaped `"""` no matter the indentation,
+# so such a line breaks the build while the extracted Python still looks fine.
+# Every `"""` line must therefore be an opener (`= """` / `return """`) or a bare
+# column-0 closer; anything else would terminate a literal mid-string.
+literal_bad="$(awk '
+    /"""/ {
+        if (index($0, "= \"\"\"") || index($0, "return \"\"\"")) next
+        if ($0 == "\"\"\"") next
+        printf "%d: %s\n", NR, $0
+    }
+' NotchBuddy/Sources/App/HookServer.swift)"
+if [ -n "$literal_bad" ]; then
+    echo "HookServer.swift has a \"\"\" that would terminate a multiline literal early:"
+    echo "$literal_bad"
+    exit 1
+fi
+
 # HookServer.swift embeds two relays: the GitHub build and the App Store build.
 # They are generated from the same logic and must emit identical bytes — they have
 # drifted once before, so run the dialect suite against both and fail if either

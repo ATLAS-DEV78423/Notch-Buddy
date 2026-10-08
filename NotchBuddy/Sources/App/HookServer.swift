@@ -2674,13 +2674,13 @@ def normalize_tool_fields(payload):
         payload['cwd'] = payload['workdir']
 
 def dialect_output(agent, decision, suggestions=None):
-    """The exact stdout for (agent, decision), or None to print nothing.
+    '''The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
     `suggestions` is payload['permission_suggestions'] — Claude Code persists the
     rule through it, so dropping it would turn "Always" into a plain "Allow".
-    """
+    '''
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
     if agent == 'hermes':
@@ -3029,13 +3029,13 @@ def normalize_tool_fields(payload):
         payload['cwd'] = payload['workdir']
 
 def dialect_output(agent, decision, suggestions=None):
-    """The exact stdout for (agent, decision), or None to print nothing.
+    '''The exact stdout for (agent, decision), or None to print nothing.
 
     Every agent reads a different receipt, so this is the one place that knows
     the difference. `decision` is what Coucou sent: allow/always/deny/answer/ask.
     `suggestions` is payload['permission_suggestions'] — Claude Code persists the
     rule through it, so dropping it would turn "Always" into a plain "Allow".
-    """
+    '''
     # Hermes reads {"action":"block"} to stop a tool and {} to let it run. It has
     # no re-ask path, so an unanswered request must block rather than fall silent.
     if agent == 'hermes':
