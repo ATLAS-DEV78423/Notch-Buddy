@@ -12,12 +12,12 @@ on:
 permissions:
   contents: write
 
-# Publishing is paused: Defender flags the unsigned installer as
-# Trojan:Win32/Wacatac.H!ml (false positive, reported to Microsoft). Tags still
-# build, to check the app compiles, but nothing is uploaded. Set this back to
-# 'true' once the installer is signed or the detection is cleared.
+# Publishing resumed for 0.1.2: Defender still flags the unsigned installer as
+# Trojan:Win32/Wacatac.H!ml (false positive, reported to Microsoft), but the
+# release notes tell the user to click More info -> Run anyway. Set this back to
+# 'false' if the detection stops being a false positive.
 env:
-  PUBLISH: 'false'
+  PUBLISH: 'true'
 
 jobs:
   build:

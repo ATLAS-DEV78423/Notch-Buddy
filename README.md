@@ -119,7 +119,7 @@ macOS releases are published as `v*` tags. See [CHANGELOG.md](CHANGELOG.md) for 
 | [0.1.1](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.1) | Oct 2, 2026 | Gemini and OpenAI chat, Linux build, more agents and pills, security hardening |
 | [0.1.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.0) | Sep 27, 2026 | First release: Mochi, Claude Code sessions, chat, file drop, integrations |
 
-Windows 0.1.1 and Linux 0.1.1 (beta) are in Releases under the `windows-v*` and `linux-v*` tags.
+Windows 0.1.2 (this fork) is in [Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.1.2) under the `windows-v*` tag; Linux 0.1.1 (beta) is upstream under `linux-v*`.
 
 ## Demo mode
 
@@ -158,10 +158,13 @@ Everything else, troubleshooting included, is in [docs/IPHONE.md](docs/IPHONE.md
 
 ### Windows
 
-The Windows installer is **temporarily unavailable**. Microsoft Defender wrongly
-flags the unsigned installer as malware; a false-positive report is under review
-at Microsoft and the installer will come back once it is cleared and signed.
-Until then you can [build it from source](#build-from-source).
+Grab `Coucou-Windows-0.1.2-setup.exe` (or `.msi`) from
+[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.1.2)
+and run it — current-user install, no admin prompt. The installer is not
+code-signed yet, so SmartScreen warns: click **More info → Run anyway**.
+Microsoft Defender may also flag it (`Trojan:Win32/Wacatac.H!ml`, a known false
+positive reported to Microsoft); if it does, choose **Allow**. Prefer not to?
+[Build it from source](#build-from-source) instead.
 
 There is no notch on a PC, so the island slides out of the top edge of the screen
 instead of hiding inside one. See [`windows/README.md`](windows/README.md) for the

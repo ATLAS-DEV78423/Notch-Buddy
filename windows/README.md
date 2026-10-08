@@ -21,13 +21,13 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 ## Install
 
-The downloadable installer is **temporarily unavailable**. Microsoft Defender
-wrongly flags the unsigned installer as malware (`Trojan:Win32/Wacatac.H!ml`, a
-machine-learning false positive). A report is under review at Microsoft, and the
-installer will be published again once it is cleared and code-signed.
-
-Until then, [build it yourself](#build-it-yourself): it takes a few minutes and
-installs for the current user only — no admin prompt.
+Grab `Coucou-Windows-0.1.2-setup.exe` (or the `.msi`) from
+[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.1.2)
+and run it — current-user install, no admin prompt. The installer is not
+code-signed yet, so SmartScreen warns: click **More info → Run anyway**.
+Microsoft Defender may also flag it (`Trojan:Win32/Wacatac.H!ml`, a known false
+positive reported to Microsoft); if it does, choose **Allow**. Prefer not to?
+[Build it yourself](#build-it-yourself) — it takes a few minutes.
 
 ## Using it
 

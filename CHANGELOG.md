@@ -18,8 +18,11 @@
   by Louis Raillé under the Coucou name. This fork did not make them and does not rewrite
   them.
 
-## Unreleased
+## 0.1.2 — October 8, 2026
 
+- **Notch-Buddy for Windows 0.1.2** — the fork's first published Windows build
+  (`windows-v0.1.2`). Download it from
+  [Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.1.2).
 - **The Hermes config path on Windows is fixed.** Hermes resolves its home as `$HERMES_HOME` if
   set, otherwise `%LOCALAPPDATA%\hermes` on Windows and `~/.hermes` on macOS and Linux. The
   installer used to write `~/.hermes/config.yaml` on every platform, so on Windows it reported
