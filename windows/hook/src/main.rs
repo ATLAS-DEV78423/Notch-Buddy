@@ -115,8 +115,17 @@ fn canonical_event(dialect: Dialect, raw: &str) -> String {
     }
     match raw {
         "pre_llm_call" => "UserPromptSubmit",
+        // Hermes has no permission event; its pre_tool_call is the only hook that can
+        // block, so for the tools the matcher selects it *is* the gate.
         "pre_tool_call" => "PermissionRequest",
         "post_tool_call" => "PostToolUse",
+        // Lifecycle. Without these the pill is never created cleanly and never removed.
+        "on_session_start" => "SessionStart",
+        "on_session_end" => "SessionEnd",
+        "subagent_start" => "SubagentStart",
+        "subagent_stop" => "SubagentStop",
+        // post_llm_call ends a turn; Hermes has no separate Stop event.
+        "post_llm_call" => "Stop",
         other => other,
     }
     .to_string()
@@ -434,6 +443,12 @@ mod tests {
         assert_eq!(canonical_event(Dialect::Hermes, "pre_tool_call"), "PermissionRequest");
         assert_eq!(canonical_event(Dialect::Hermes, "post_tool_call"), "PostToolUse");
         assert_eq!(canonical_event(Dialect::Hermes, "pre_llm_call"), "UserPromptSubmit");
+        // Session and subagent lifecycle, so a Hermes session behaves like a Claude one.
+        assert_eq!(canonical_event(Dialect::Hermes, "on_session_start"), "SessionStart");
+        assert_eq!(canonical_event(Dialect::Hermes, "on_session_end"), "SessionEnd");
+        assert_eq!(canonical_event(Dialect::Hermes, "subagent_start"), "SubagentStart");
+        assert_eq!(canonical_event(Dialect::Hermes, "subagent_stop"), "SubagentStop");
+        assert_eq!(canonical_event(Dialect::Hermes, "post_llm_call"), "Stop");
         // An event we do not know is forwarded untouched rather than dropped.
         assert_eq!(canonical_event(Dialect::Hermes, "something_new"), "something_new");
         // Every other agent already speaks the canonical vocabulary.

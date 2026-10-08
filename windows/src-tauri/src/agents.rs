@@ -242,9 +242,38 @@ pub const HERMES_END: &str = "# coucou:end";
 /// that change something. Hermes truncates `timeout` at 300 s.
 pub const HERMES_GATE_MATCHER: &str = "terminal|write_file|patch";
 
+/// Hermes' home directory, resolved the way Hermes resolves it.
+///
+/// `$HERMES_HOME` wins. Otherwise Windows uses `%LOCALAPPDATA%\hermes` — **not**
+/// `~/.hermes`, which is the POSIX default and does not exist on a Windows install.
+/// Getting this wrong is silent: the installer reports success, and Hermes never
+/// loads the hook. Verified with `hermes config path`, which prints
+/// `C:\Users\<user>\AppData\Local\hermes\config.yaml` on this machine.
+pub fn hermes_home() -> PathBuf {
+    if let Some(home) = std::env::var_os("HERMES_HOME") {
+        if !home.is_empty() {
+            return PathBuf::from(home);
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            if !local.is_empty() {
+                return PathBuf::from(local).join("hermes");
+            }
+        }
+    }
+    platform::home_dir().join(".hermes")
+}
+
 pub fn hermes_config_path() -> PathBuf {
-    // XDG-style on every platform, like OpenCode.
-    platform::home_dir().join(".hermes/config.yaml")
+    hermes_home().join("config.yaml")
+}
+
+/// The consent allowlist Hermes keeps beside its config. Coucou does not write it —
+/// the user approves each hook — but the docs and the manual test need the path.
+pub fn hermes_allowlist_path() -> PathBuf {
+    hermes_home().join("shell-hooks-allowlist.json")
 }
 
 /// The marker-delimited block Coucou owns inside ~/.hermes/config.yaml.
@@ -266,6 +295,18 @@ pub fn hermes_config_block(hook_command: &str) -> String {
          \x20     timeout: 130\n\
          \x20 post_tool_call:\n\
          \x20   - command: '{hook_command} post_tool_call'\n\
+         \x20     timeout: 10\n\
+         \x20 on_session_start:\n\
+         \x20   - command: '{hook_command} on_session_start'\n\
+         \x20     timeout: 10\n\
+         \x20 on_session_end:\n\
+         \x20   - command: '{hook_command} on_session_end'\n\
+         \x20     timeout: 10\n\
+         \x20 subagent_start:\n\
+         \x20   - command: '{hook_command} subagent_start'\n\
+         \x20     timeout: 10\n\
+         \x20 subagent_stop:\n\
+         \x20   - command: '{hook_command} subagent_stop'\n\
          \x20     timeout: 10\n\
          {HERMES_END}"
     )
@@ -496,16 +537,49 @@ mod tests {
         let block = hermes_config_block(r#""C:/x/coucou-hook.exe" --agent hermes"#);
         assert!(block.starts_with(HERMES_BEGIN));
         assert!(block.ends_with(HERMES_END));
-        assert!(block.contains("pre_llm_call:"));
-        assert!(block.contains("pre_tool_call:"));
-        assert!(block.contains("post_tool_call:"));
-        assert!(block.contains("matcher:"));
-        assert!(block.contains("timeout: 130"));
+        for event in ["pre_llm_call", "pre_tool_call", "post_tool_call",
+                      "on_session_start", "on_session_end", "subagent_start", "subagent_stop"] {
+            assert!(block.contains(&format!("{event}:")), "the block must declare {event}");
+        }
+        // Only pre_tool_call may carry a matcher or a long timeout: Hermes honours a
+        // block directive on that event alone (shell_hooks.py: _BLOCKING_EVENTS).
+        assert_eq!(block.matches("matcher:").count(), 1, "exactly one matcher, on pre_tool_call");
+        assert_eq!(block.matches("timeout: 130").count(), 1, "only the gate waits");
         // A closed Coucou must never block Hermes: fail-open is the contract.
         assert!(!block.contains("fail_closed"));
         // The command holds double quotes, so the YAML scalar must be single-quoted.
         assert!(block.contains("command: '"));
         assert!(!block.contains("command: \""));
+    }
+
+    #[test]
+    fn the_hermes_config_lives_where_hermes_says_it_does() {
+        // Hermes resolves its home as: $HERMES_HOME, else %LOCALAPPDATA%\hermes on
+        // Windows, else ~/.hermes. Writing anywhere else means the installer reports
+        // success and Hermes never loads the hook. Verified against the real install:
+        //   $ hermes config path
+        //   C:\Users\Stanley\AppData\Local\hermes\config.yaml
+        std::env::remove_var("HERMES_HOME");
+        let p = hermes_config_path();
+
+        if cfg!(windows) {
+            let local = std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA is set on Windows");
+            let want = PathBuf::from(local).join("hermes").join("config.yaml");
+            assert_eq!(p, want, "must match `hermes config path`");
+            // The old bug: a `.hermes` segment under the user profile.
+            assert!(
+                !p.to_string_lossy().contains(".hermes"),
+                "the Windows home has no .hermes segment — got {p:?}"
+            );
+        } else {
+            assert!(p.ends_with(".hermes/config.yaml"), "got {p:?}");
+        }
+
+        // $HERMES_HOME wins, and the allowlist sits beside the config.
+        std::env::set_var("HERMES_HOME", r"C:\tmp\hermes-test");
+        assert_eq!(hermes_config_path(), PathBuf::from(r"C:\tmp\hermes-test").join("config.yaml"));
+        assert_eq!(hermes_allowlist_path(), PathBuf::from(r"C:\tmp\hermes-test").join("shell-hooks-allowlist.json"));
+        std::env::remove_var("HERMES_HOME");
     }
 
     #[test]
