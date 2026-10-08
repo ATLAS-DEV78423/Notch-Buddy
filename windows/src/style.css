@@ -743,6 +743,17 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--ink);
 }
 
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+.widget { background: #1D1F23; border-radius: 12px; padding: 10px; cursor: pointer; transition: transform 0.15s; }
+.widget:hover { transform: scale(1.02); }
+.widget-title { font-size: 10px; color: #8E939C; margin-bottom: 6px; text-transform: uppercase; }
+.widget-value { font-size: 13px; color: #F5F6F8; }
+.widget-empty { font-size: 11px; color: #6B7079; }
+.widget-media { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #F5F6F8; }
+.widget-album-art { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; }
+
 /* ── Utility ────────────────────────────────────────────────────────────── */
 
 .grow {

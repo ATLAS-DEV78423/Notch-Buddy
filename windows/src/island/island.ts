@@ -850,8 +850,16 @@ export class Island {
     // The chat is the only view with a text field, so it is the only time the
     // island is allowed to take keyboard focus.
     if (this.lastSyncedView !== State.view) {
-      const wasChat = this.lastSyncedView === "prompt";
+      const prev = this.lastSyncedView;
+      const wasChat = prev === "prompt";
       this.lastSyncedView = State.view;
+      // Views reached through State.setView() skip Island.setView()'s geometry
+      // animation, so any view change resizes the island here. Re-issuing the
+      // same target for the paths that already animated is a no-op.
+      if (prev != null) {
+        const grew = VIEW_LAYOUTS[State.view].height >= VIEW_LAYOUTS[prev].height;
+        this.animateGeometry(!grew);
+      }
       if (State.view === "prompt") {
         void Bridge.focusWindow(true);
         window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);

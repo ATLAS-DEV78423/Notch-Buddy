@@ -78,6 +78,7 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
 // ── Tab groups ────────────────────────────────────────────────────────────────
 
 const GROUPS: { id: ViewGroup; label: string; views: IslandViewName[] }[] = [
+  { id: "home", label: "Home", views: ["dashboard"] },
   { id: "agents", label: "Agents", views: [
     "overview", "empty", "approval", "question", "error", "finished", "confused",
     "upload", "uploading", "choose", "mail", "prompt", "searching", "result",
@@ -545,7 +546,61 @@ function buildPlaceholder(title: string, sub: string): ViewHost {
 
 // ── New view stubs (filled in by later tasks) ────────────────────────────────
 
-function renderDashboardView(): HTMLElement { return h("div", { class: "view-dashboard" }, "Dashboard"); }
+function renderDashboardView(): HTMLElement {
+  const media = State.media;
+  const mediaWidget = h("div", { class: "widget", onclick: () => State.setView("media") },
+    h("div", { class: "widget-title" }, "Media"),
+    media
+      ? h("div", { class: "widget-media" },
+          h("img", { src: media.albumArt, class: "widget-album-art" }),
+          h("div", {}, media.track, h("br"), media.artist),
+        )
+      : h("div", { class: "widget-empty" }, "No media playing"),
+  );
+
+  const stats = State.stats;
+  const statsWidget = h("div", { class: "widget", onclick: () => State.setView("stats") },
+    h("div", { class: "widget-title" }, "Stats"),
+    h("div", { class: "widget-value" },
+      `CPU ${Math.round(stats.cpu)}% · RAM ${Math.round(stats.ram)}%`),
+  );
+
+  const timer = State.timer;
+  const mins = Math.floor(timer.remaining / 60);
+  const secs = String(timer.remaining % 60).padStart(2, "0");
+  const timerLabel = timer.mode.charAt(0).toUpperCase() + timer.mode.slice(1);
+  const timerWidget = h("div", { class: "widget", onclick: () => State.setView("pomodoro") },
+    h("div", { class: "widget-title" }, "Timer"),
+    h("div", { class: "widget-value" }, `${timerLabel} · ${mins}:${secs}`),
+  );
+
+  const weather = State.weather;
+  const weatherWidget = h("div", { class: "widget", onclick: () => State.setView("weather") },
+    h("div", { class: "widget-title" }, "Weather"),
+    weather.condition
+      ? h("div", { class: "widget-value" }, `${weather.temp}° ${weather.condition}`)
+      : h("div", { class: "widget-empty" }, "No weather data"),
+  );
+
+  const battery = State.battery;
+  const batteryWidget = h("div", { class: "widget", onclick: () => State.setView("controlCenter") },
+    h("div", { class: "widget-title" }, "Battery"),
+    h("div", { class: "widget-value" },
+      `${battery.level}%${battery.charging ? " · Charging" : ""}`),
+  );
+
+  const devices = State.bluetooth.devices;
+  const bluetoothWidget = h("div", { class: "widget", onclick: () => State.setView("bluetooth") },
+    h("div", { class: "widget-title" }, "Bluetooth"),
+    devices.length
+      ? h("div", { class: "widget-value" },
+          `${devices.filter((d) => d.connected).length}/${devices.length} connected`)
+      : h("div", { class: "widget-empty" }, "No devices"),
+  );
+
+  return h("div", { class: "dashboard-grid" },
+    mediaWidget, statsWidget, timerWidget, weatherWidget, batteryWidget, bluetoothWidget);
+}
 function renderMediaView(): HTMLElement { return h("div", { class: "view-media" }, "Media"); }
 function renderControlCenterView(): HTMLElement { return h("div", { class: "view-control-center" }, "Control Center"); }
 function renderBluetoothView(): HTMLElement { return h("div", { class: "view-bluetooth" }, "Bluetooth"); }

@@ -279,6 +279,12 @@ class AppState {
     this.notify();
   }
 
+  /** Sets the active view and marks the UI dirty (island geometry follows in syncDom). */
+  setView(v: IslandViewName) {
+    this.view = v;
+    this.notify();
+  }
+
   defaultView(): IslandViewName {
     return this.tasks.length === 0 ? "empty" : "overview";
   }

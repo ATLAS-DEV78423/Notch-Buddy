@@ -31,7 +31,7 @@ export type IslandViewName =
   | "stopwatch"
   | "weather";
 
-export type ViewGroup = "agents" | "media" | "system" | "tools";
+export type ViewGroup = "home" | "agents" | "media" | "system" | "tools";
 
 export type BotStateName =
   | "idle"
