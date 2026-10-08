@@ -21,7 +21,17 @@ export type IslandViewName =
   | "result"
   | "note"
   | "settings"
-  | "greeting";
+  | "greeting"
+  | "dashboard"
+  | "media"
+  | "controlCenter"
+  | "bluetooth"
+  | "stats"
+  | "pomodoro"
+  | "stopwatch"
+  | "weather";
+
+export type ViewGroup = "agents" | "media" | "system" | "tools";
 
 export type BotStateName =
   | "idle"
@@ -86,6 +96,14 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
   settings: { height: 160, botX: 54, botY: null, botDiameter: 46, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
+  dashboard: { height: 300, botX: 60, botY: 80, botDiameter: 48, agentMode: "none" },
+  media: { height: 200, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  controlCenter: { height: 220, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  bluetooth: { height: 240, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  stats: { height: 200, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  pomodoro: { height: 260, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  stopwatch: { height: 160, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
+  weather: { height: 180, botX: 60, botY: 60, botDiameter: 40, agentMode: "none" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually

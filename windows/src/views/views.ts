@@ -6,7 +6,7 @@ import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { State, type AgentTask } from "../core/state";
-import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
+import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
@@ -75,6 +75,35 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
   return el;
 }
 
+// ── Tab groups ────────────────────────────────────────────────────────────────
+
+const GROUPS: { id: ViewGroup; label: string; views: IslandViewName[] }[] = [
+  { id: "agents", label: "Agents", views: [
+    "overview", "empty", "approval", "question", "error", "finished", "confused",
+    "upload", "uploading", "choose", "mail", "prompt", "searching", "result",
+    "note", "settings", "greeting",
+  ] },
+  { id: "media", label: "Media", views: ["media"] },
+  { id: "system", label: "System", views: ["controlCenter", "bluetooth", "stats"] },
+  { id: "tools", label: "Tools", views: ["pomodoro", "stopwatch", "weather"] },
+];
+
+function getViewsForGroup(group: ViewGroup): IslandViewName[] {
+  return GROUPS.find((g) => g.id === group)?.views ?? [];
+}
+
+function groupOfView(view: IslandViewName): ViewGroup {
+  return GROUPS.find((g) => g.views.includes(view))?.id ?? "agents";
+}
+
+function viewLabel(view: IslandViewName): string {
+  return view
+    .replace(/([A-Z])/g, " $1")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 
 export function buildHeader(actions: ViewActions): ViewHost {
@@ -90,10 +119,39 @@ export function buildHeader(actions: ViewActions): ViewHost {
     actions.setView(v);
   }
 
+  const groupTabs = new Map<ViewGroup, HTMLElement>();
+  const groupsEl = h("div", { class: "tab-groups" });
+  for (const g of GROUPS) {
+    const tab = h("button", {
+      class: "tab-group",
+      text: g.label,
+      onclick: () => {
+        actions.blip();
+        State.setViewGroup(g.id);
+        if (!g.views.includes(State.view)) go(getViewsForGroup(g.id)[0]);
+      },
+    });
+    groupTabs.set(g.id, tab);
+    groupsEl.append(tab);
+  }
+
+  const subPills = new Map<IslandViewName, HTMLElement>();
+  const pillsEl = h("div", { class: "sub-view-pills" });
+  for (const g of GROUPS) {
+    if (g.id === "agents") continue;
+    for (const v of g.views) {
+      const pill = h("button", { class: "sub-view-pill", text: viewLabel(v), onclick: () => go(v) });
+      subPills.set(v, pill);
+      pillsEl.append(pill);
+    }
+  }
+
   const el = h(
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, tabHome, tabChat, tabDrop),
+    groupsEl,
+    pillsEl,
     h("div", { class: "header-actions" }, gearBtn, soundBtn),
   );
 
@@ -109,6 +167,10 @@ export function buildHeader(actions: ViewActions): ViewHost {
       gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
       clear(soundBtn);
       soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
+      const group = groupOfView(v);
+      for (const [id, tab] of groupTabs) tab.classList.toggle("active", id === group);
+      pillsEl.style.display = group === "agents" ? "none" : "flex";
+      for (const [pv, pill] of subPills) pill.classList.toggle("active", pv === v);
       el.style.opacity = v === "confused" ? "0" : "1";
     },
   };
@@ -481,6 +543,23 @@ function buildPlaceholder(title: string, sub: string): ViewHost {
   return { el: h("div", { class: "view" }, card(null, body)), sync() {} };
 }
 
+// ── New view stubs (filled in by later tasks) ────────────────────────────────
+
+function renderDashboardView(): HTMLElement { return h("div", { class: "view-dashboard" }, "Dashboard"); }
+function renderMediaView(): HTMLElement { return h("div", { class: "view-media" }, "Media"); }
+function renderControlCenterView(): HTMLElement { return h("div", { class: "view-control-center" }, "Control Center"); }
+function renderBluetoothView(): HTMLElement { return h("div", { class: "view-bluetooth" }, "Bluetooth"); }
+function renderStatsView(): HTMLElement { return h("div", { class: "view-stats" }, "Stats"); }
+function renderPomodoroView(): HTMLElement { return h("div", { class: "view-pomodoro" }, "Pomodoro"); }
+function renderStopwatchView(): HTMLElement { return h("div", { class: "view-stopwatch" }, "Stopwatch"); }
+function renderWeatherView(): HTMLElement { return h("div", { class: "view-weather" }, "Weather"); }
+
+/** The dispatcher toggles `.on` on the host's root, so the stub's own div sits
+ *  inside a standard `.view` wrapper like every other view. */
+function stubView(render: () => HTMLElement): ViewHost {
+  return { el: h("div", { class: "view" }, render()), sync() {} };
+}
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export function buildViews(
@@ -505,5 +584,13 @@ export function buildViews(
   map.set("mail", buildPlaceholder("Sending by email isn't in this version.", ""));
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
   map.set("result", buildPlaceholder("Result", ""));
+  map.set("dashboard", stubView(renderDashboardView));
+  map.set("media", stubView(renderMediaView));
+  map.set("controlCenter", stubView(renderControlCenterView));
+  map.set("bluetooth", stubView(renderBluetoothView));
+  map.set("stats", stubView(renderStatsView));
+  map.set("pomodoro", stubView(renderPomodoroView));
+  map.set("stopwatch", stubView(renderStopwatchView));
+  map.set("weather", stubView(renderWeatherView));
   return map;
 }

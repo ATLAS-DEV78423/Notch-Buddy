@@ -1,6 +1,6 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
-import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
+import type { BotEmoteName, BotStateName, IslandMode, IslandViewName, ViewGroup } from "./layout";
 import type { EyeShape } from "../mochi/engine";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
@@ -144,6 +144,17 @@ class AppState {
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 
+  media: { track: string; artist: string; albumArt: string; playing: boolean; position: number; duration: number; sourceApp: string } | null = null;
+  stats: { cpu: number; ram: number; netRx: number; netTx: number } = { cpu: 0, ram: 0, netRx: 0, netTx: 0 };
+  volume: { level: number; muted: boolean } = { level: 0, muted: false };
+  brightness: { level: number } = { level: 0 };
+  bluetooth: { devices: Array<{ name: string; type: string; battery: number; connected: boolean }> } = { devices: [] };
+  battery: { level: number; charging: boolean; timeRemaining: number } = { level: 100, charging: false, timeRemaining: 0 };
+  clipboard: { lastUrl: string } = { lastUrl: "" };
+  timer: { mode: "focus" | "break" | "stopwatch"; running: boolean; remaining: number; tasks: Array<{ text: string; done: boolean }> } = { mode: "focus", running: false, remaining: 25 * 60, tasks: [] };
+  weather: { temp: number; condition: string; humidity: number; wind: number } = { temp: 0, condition: "", humidity: 0, wind: 0 };
+  viewGroup: ViewGroup = "agents";
+
   private listeners = new Set<Listener>();
 
   subscribe(fn: Listener): () => void {
@@ -261,6 +272,11 @@ class AppState {
       this.settings.activeIntegrations = [...active, id];
     }
     this.loadIntegrationTasks();
+  }
+
+  setViewGroup(group: ViewGroup) {
+    this.viewGroup = group;
+    this.notify();
   }
 
   defaultView(): IslandViewName {

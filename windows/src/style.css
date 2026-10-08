@@ -249,6 +249,15 @@ body {
   color: var(--ink);
 }
 
+/* ── Header tab groups ──────────────────────────────────────────────────── */
+
+.tab-groups { display: flex; gap: 4px; margin-left: 10px; }
+.tab-group { padding: 4px 10px; border-radius: 8px; font-size: 11px; color: #8E939C; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
+.tab-group.active { background: #1D1F23; color: #F5F6F8; }
+.sub-view-pills { display: flex; gap: 4px; margin-top: 4px; margin-left: 10px; }
+.sub-view-pill { padding: 2px 8px; border-radius: 6px; font-size: 10px; color: #6B7079; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
+.sub-view-pill.active { background: #1D1F23; color: #F5F6F8; }
+
 #views {
   position: relative;
   flex: 1 1 auto;
