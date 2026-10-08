@@ -472,7 +472,7 @@ pub fn run() {
             hooks::ensure_hook_exe(&handle);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
-            media::setup_media(&handle);
+            media::setup_media(&handle, gate.clone());
             Ok(())
         })
         .run(tauri::generate_context!())

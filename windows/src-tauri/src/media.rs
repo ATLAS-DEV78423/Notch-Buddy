@@ -5,12 +5,15 @@
 // four commands reach for the same session; with no session — nothing plays —
 // they return a friendly error instead of failing.
 
+use std::sync::Arc;
 use tauri::AppHandle;
+
+use crate::island::PollGate;
 
 #[cfg(windows)]
 mod imp {
     use std::cell::Cell;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use serde::Serialize;
@@ -24,7 +27,7 @@ mod imp {
     use windows::Storage::Streams::{DataReader, IRandomAccessStream};
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 
-    use crate::island::WINDOW_LABEL;
+    use crate::island::{PollGate, WINDOW_LABEL};
 
     #[derive(Serialize, Clone, PartialEq)]
     #[serde(rename_all = "camelCase")]
@@ -158,7 +161,8 @@ mod imp {
 
     /// Album art as a data URI, cached per (title, artist): re-reading the
     /// thumbnail stream every poll would push image bytes around every second
-    /// for the same song.
+    /// for the same song. Failures are not cached — a transient error would
+    /// otherwise mean no art for the rest of the track.
     fn read_thumbnail(props: &GlobalSystemMediaTransportControlsSessionMediaProperties) -> String {
         static CACHE: Mutex<Option<(String, String, String)>> = Mutex::new(None);
         let Ok(title) = props.Title() else { return String::new() };
@@ -172,7 +176,7 @@ mod imp {
                 }
             }
         }
-        let uri = fetch_thumbnail(props).unwrap_or_default();
+        let Some(uri) = fetch_thumbnail(props) else { return String::new() };
         *CACHE.lock().unwrap() = Some((title, artist, uri.clone()));
         uri
     }
@@ -199,29 +203,46 @@ mod imp {
         Some(format!("data:{mime};base64,{}", crate::claude::base64_for(&bytes)))
     }
 
-    pub fn poll_once(app: &AppHandle) {
+    /// Returns whether a session exists — the watcher backs off when nothing plays.
+    pub fn poll_once(app: &AppHandle) -> bool {
+        ensure_com();
         let state = current_state();
+        let has_session = state.is_some();
         let track = state
             .as_ref()
             .map(|s| (s.track.clone(), s.artist.clone(), s.source_app.clone()));
         let mut watch = WATCH.lock().unwrap();
+        let track_changed = track != watch.track;
         if state != watch.last {
-            let _ = app.emit_to(WINDOW_LABEL, "media-state", &state);
+            // Album art is a base64 data URI, often hundreds of KB: only ship it
+            // when the track changed; the 1 Hz position tick gets an empty string.
+            let emit = match &state {
+                Some(s) if !track_changed => Some(MediaState { album_art: String::new(), ..s.clone() }),
+                other => other.clone(),
+            };
+            let _ = app.emit_to(WINDOW_LABEL, "media-state", &emit);
             watch.last = state;
         }
-        if track != watch.track {
+        if track_changed {
             let _ = app.emit_to(WINDOW_LABEL, "media-changed", ());
             watch.track = track;
         }
+        has_session
     }
 
-    pub fn setup(app: &AppHandle) {
+    /// Parks on the same gate as the cursor poll: a hidden island costs nothing.
+    /// With no session the loop drops to one lookup every 5 s until a player
+    /// appears.
+    pub fn setup(app: &AppHandle, gate: Arc<PollGate>) {
         let app = app.clone();
         std::thread::spawn(move || {
             ensure_com();
             loop {
-                std::thread::sleep(Duration::from_secs(1));
-                poll_once(&app);
+                gate.wait_until_active();
+                while gate.is_active() {
+                    let period = if poll_once(&app) { 1 } else { 5 };
+                    std::thread::sleep(Duration::from_secs(period));
+                }
             }
         });
     }
@@ -229,7 +250,10 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
+    use std::sync::Arc;
     use tauri::AppHandle;
+
+    use crate::island::PollGate;
 
     pub fn play_pause() -> Result<(), String> {
         Err("Media controls are Windows-only".to_string())
@@ -243,39 +267,41 @@ mod imp {
     pub fn seek(_position: f64) -> Result<(), String> {
         Err("Media controls are Windows-only".to_string())
     }
-    pub fn setup(_app: &AppHandle) {}
-    pub fn poll_once(_app: &AppHandle) {}
+    pub fn setup(_app: &AppHandle, _gate: Arc<PollGate>) {}
+    pub fn poll_once(_app: &AppHandle) -> bool {
+        false
+    }
 }
 
 #[tauri::command]
 pub async fn media_play_pause(app: AppHandle) -> Result<(), String> {
     imp::play_pause()?;
     // Refresh now: the play/pause glyph must flip with the click, not a second later.
-    imp::poll_once(&app);
+    let _ = imp::poll_once(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn media_next(app: AppHandle) -> Result<(), String> {
     imp::next()?;
-    imp::poll_once(&app);
+    let _ = imp::poll_once(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn media_prev(app: AppHandle) -> Result<(), String> {
     imp::prev()?;
-    imp::poll_once(&app);
+    let _ = imp::poll_once(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn media_seek(app: AppHandle, position: f64) -> Result<(), String> {
     imp::seek(position)?;
-    imp::poll_once(&app);
+    let _ = imp::poll_once(&app);
     Ok(())
 }
 
-pub fn setup_media(app: &AppHandle) {
-    imp::setup(app);
+pub fn setup_media(app: &AppHandle, gate: Arc<PollGate>) {
+    imp::setup(app, gate);
 }
