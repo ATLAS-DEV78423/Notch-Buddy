@@ -7,6 +7,7 @@ mod hooks;
 mod integrations;
 mod island;
 mod log;
+mod media;
 mod pipe;
 mod platform;
 mod secrets;
@@ -442,6 +443,10 @@ pub fn run() {
             open_n8n,
             open_settings_window,
             set_paused,
+            media::media_play_pause,
+            media::media_next,
+            media::media_prev,
+            media::media_seek,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -467,6 +472,7 @@ pub fn run() {
             hooks::ensure_hook_exe(&handle);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
+            media::setup_media(&handle);
             Ok(())
         })
         .run(tauri::generate_context!())
