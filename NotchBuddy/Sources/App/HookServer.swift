@@ -2348,15 +2348,17 @@ export const CoucouPlugin = async (ctx) => {
       forward(hook_event_name, payload);
     },
 
-    'tool.execute.before': async (input) => {
+    'tool.execute.before': async (input, output) => {
       forward('PreToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',
-        tool_input: input.input ?? null,
+        // The SDK passes tool arguments on the second parameter (`output.args`),
+        // not on `input`. Reading `input.input` forwarded null for every tool.
+        tool_input: output?.args ?? null,
       });
     },
 
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': async (input, output) => {
       forward('PostToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',

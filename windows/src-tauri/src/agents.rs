@@ -127,15 +127,17 @@ export const CoucouPlugin = async (ctx) => {
       forward(hook_event_name, payload);
     },
 
-    'tool.execute.before': async (input) => {
+    'tool.execute.before': async (input, output) => {
       forward('PreToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',
-        tool_input: input.input ?? null,
+        // The SDK passes tool arguments on the second parameter (`output.args`),
+        // not on `input`. Reading `input.input` forwarded null for every tool.
+        tool_input: output?.args ?? null,
       });
     },
 
-    'tool.execute.after': async (input) => {
+    'tool.execute.after': async (input, output) => {
       forward('PostToolUse', {
         ...base(input.sessionID || input.session_id),
         tool_name: typeof input.tool === 'string' ? input.tool : '',
@@ -272,6 +274,11 @@ pub fn hermes_config_path() -> PathBuf {
 
 /// The consent allowlist Hermes keeps beside its config. Coucou does not write it —
 /// the user approves each hook — but the docs and the manual test need the path.
+///
+/// Only the docs and `the_hermes_config_lives_where_hermes_says_it_does` call this,
+/// so a non-test build would otherwise warn `dead_code`. Kept public and named for
+/// those consumers rather than deleted.
+#[allow(dead_code)]
 pub fn hermes_allowlist_path() -> PathBuf {
     hermes_home().join("shell-hooks-allowlist.json")
 }
@@ -459,6 +466,15 @@ pub fn hermes_write(install: bool, fingerprint: &str) -> Result<String, String> 
 mod tests {
     use super::*;
 
+    /// `cargo test` runs tests in parallel threads and `HERMES_HOME` is process
+    /// global, so the tests that read or write it must not interleave. Every
+    /// env-dependent test takes this lock for its whole body.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
+
     #[test]
     fn the_plugin_is_windows_capable_and_keeps_its_identity_markers() {
         let js = opencode_plugin_source("C:/Users/x/AppData/Local/coucou/bin/coucou-hook.exe");
@@ -559,6 +575,7 @@ mod tests {
         // success and Hermes never loads the hook. Verified against the real install:
         //   $ hermes config path
         //   C:\Users\Stanley\AppData\Local\hermes\config.yaml
+        let _guard = env_guard();
         std::env::remove_var("HERMES_HOME");
         let p = hermes_config_path();
 
@@ -580,6 +597,67 @@ mod tests {
         assert_eq!(hermes_config_path(), PathBuf::from(r"C:\tmp\hermes-test").join("config.yaml"));
         assert_eq!(hermes_allowlist_path(), PathBuf::from(r"C:\tmp\hermes-test").join("shell-hooks-allowlist.json"));
         std::env::remove_var("HERMES_HOME");
+    }
+
+    #[test]
+    fn a_hermes_install_uninstall_cycle_leaves_the_users_file_untouched() {
+        // The writer once resolved the wrong path and silently edited a file
+        // Hermes never reads. The block-text tests above cannot catch that, so
+        // this drives the real preview/write pair against a temp `HERMES_HOME`
+        // and proves install -> install -> uninstall returns the user's config
+        // byte for byte.
+        let _guard = env_guard();
+
+        let dir = std::env::temp_dir().join(format!(
+            "coucou-hermes-roundtrip-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("HERMES_HOME", &dir);
+
+        // A realistic config: unrelated top-level keys plus a comment.
+        let original = "# my hermes config\nmodel: opus\nprofile: default\neditor: vim\n";
+        let config = hermes_config_path();
+        assert_eq!(config, dir.join("config.yaml"), "writer must target $HERMES_HOME");
+        std::fs::write(&config, original).unwrap();
+
+        // Install: all seven events present, the user's keys still there.
+        let preview = hermes_preview(true).unwrap();
+        hermes_write(true, &preview.fingerprint).unwrap();
+        let installed = std::fs::read_to_string(&config).unwrap();
+        for event in ["pre_llm_call", "pre_tool_call", "post_tool_call",
+                      "on_session_start", "on_session_end", "subagent_start", "subagent_stop"] {
+            assert!(
+                installed.contains(&format!("{event}:")),
+                "install dropped {event}:\n{installed}"
+            );
+        }
+        for key in ["# my hermes config", "model: opus", "profile: default", "editor: vim"] {
+            assert!(installed.contains(key), "install dropped {key:?}:\n{installed}");
+        }
+
+        // Install again: replace the block, never stack a second one.
+        let preview = hermes_preview(true).unwrap();
+        hermes_write(true, &preview.fingerprint).unwrap();
+        let reinstalled = std::fs::read_to_string(&config).unwrap();
+        assert_eq!(
+            reinstalled.matches(HERMES_BEGIN).count(),
+            1,
+            "re-installing stacked a second block:\n{reinstalled}"
+        );
+
+        // Uninstall: byte-identical to what we started with.
+        let preview = hermes_preview(false).unwrap();
+        hermes_write(false, &preview.fingerprint).unwrap();
+        let restored = std::fs::read_to_string(&config).unwrap();
+        assert_eq!(restored, original, "uninstall did not restore the file");
+
+        std::env::remove_var("HERMES_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
