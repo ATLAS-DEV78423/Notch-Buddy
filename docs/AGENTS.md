@@ -218,9 +218,22 @@ A "demo" pill should appear in the island.
 
 ## Hermes Agent (macOS, Windows, Linux)
 
-Hermes runs shell hooks declared in `~/.hermes/config.yaml`, under a top-level `hooks:` key
-(sibling of `model:`). Notch-Buddy points those entries straight at its relay — no wrapper script.
+Hermes runs shell hooks declared under a top-level `hooks:` key (sibling of `model:`) in its
+config file. Notch-Buddy points those entries straight at its relay — no wrapper script.
 Hermes sessions surface as the `agent_hermes` pill.
+
+### Where the config lives
+
+The config lives in the Hermes home: `$HERMES_HOME` if set, otherwise `%LOCALAPPDATA%\hermes`
+on Windows and `~/.hermes` on macOS and Linux. Run `hermes config path` to print it. On Windows
+that is `C:\Users\<you>\AppData\Local\hermes\config.yaml` — **not** `~/.hermes/config.yaml`,
+which is the POSIX default and does not exist on a Windows install. Writing the Windows hooks
+to `~/.hermes` is silent: the installer reports success and Hermes never loads them.
+
+> **A trap.** `hermes hooks list` prints a hardcoded message naming `~/.hermes/config.yaml` even
+> on Windows, where it actually read `%LOCALAPPDATA%\hermes\config.yaml` (`hermes_cli/hooks.py`).
+> That string is a literal in the "nothing configured" branch, so it appears regardless of
+> platform. `hermes config path` is authoritative; that message is not.
 
 ```yaml
 hooks:
@@ -234,12 +247,22 @@ hooks:
   post_tool_call:
     - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes post_tool_call'
       timeout: 10
+  on_session_start:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes on_session_start'
+      timeout: 10
+  on_session_end:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes on_session_end'
+      timeout: 10
+  subagent_start:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes subagent_start'
+      timeout: 10
+  subagent_stop:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes subagent_stop'
+      timeout: 10
 ```
 
 Note the single-quoted YAML scalars: the command contains double quotes, so a
 double-quoted scalar would need escaping that is easy to get wrong.
-
-The event names above come from the Hermes v0.21.3 documentation, not from a local install. If `hermes hooks list` shows nothing after installing, check the event names first — Hermes silently skips an unrecognised one.
 
 macOS uses `/bin/sh "<Application Support>/NotchBuddy/nb-hook" --agent hermes <event>` instead.
 
@@ -258,37 +281,64 @@ promise that a closed Notch-Buddy never blocks your agent. The timeout row is wh
 instead of silently allowing.
 
 **Consent.** Hermes will not run a shell hook until you approve that exact `(event, command)`
-pair, recorded in `~/.hermes/shell-hooks-allowlist.json`. Until then the hook is silently
-skipped — `hermes hooks list` shows `✗ not allowlisted`. Approve with one of:
+pair, recorded in `<home>/shell-hooks-allowlist.json` (beside the config). Until then the hook is
+silently skipped — `hermes hooks list` shows `✗ not allowlisted`.
+
+Registration only happens at **session startup**. Hermes's own `register_from_config`
+(`agent/shell_hooks.py`) is what writes the allowlist, and only a session-starting command calls
+it. `hermes hooks list`, `test` and `doctor` never register, so running *those* under
+`HERMES_ACCEPT_HOOKS=1` does nothing. To approve non-interactively, make a session start with the
+env var set:
 
 ```bash
-hermes --accept-hooks chat        # one-off CLI flag
-export HERMES_ACCEPT_HOOKS=1      # environment variable
+export HERMES_ACCEPT_HOOKS=1
+hermes chat        # or any session-starting command — the startup path registers the hooks
 ```
 
-or set `hooks_auto_accept: true` in `~/.hermes/config.yaml`.
+`HERMES_ACCEPT_HOOKS=1`, the `--accept-hooks` flag and `hooks_auto_accept: true` in the config are
+all honoured — they just need a session-starting command to take effect. Verified by invoking
+Hermes's own registration function under `HERMES_ACCEPT_HOOKS=1`: the allowlist was written and
+`hermes hooks doctor` then reported all seven healthy. A full interactive session writing it was
+**not** observed, and the plan's earlier suggestion `hermes --accept-hooks chat --help` approves
+nothing — `--help` exits before startup.
 
 Changing the relay path changes the command string and therefore re-prompts. `hermes hooks doctor`
 reports drift.
 
-**Event map**
+**The seven events Notch-Buddy installs.** Verified against a real Hermes v0.21.5 install —
+`hermes hooks list` shows all seven and `hermes hooks doctor` reports them healthy:
 
-| Hermes shell hook | Canonical event | Notes |
+| Hermes event | Canonical event | Timeout |
 |---|---|---|
-| `pre_llm_call` | `UserPromptSubmit` | Once per turn — puts the prompt in the ticker and sets `thinking` |
-| `pre_tool_call` | `PermissionRequest` | **Approval-capable.** `matcher` scopes it to the tools that change something |
-| `post_tool_call` | `PostToolUse` | Display only — sets `working` |
+| `pre_llm_call` | `UserPromptSubmit` | 10 s |
+| `pre_tool_call` | `PermissionRequest` | 130 s, `matcher: terminal\|write_file\|patch` |
+| `post_tool_call` | `PostToolUse` | 10 s |
+| `on_session_start` | `SessionStart` | 10 s |
+| `on_session_end` | `SessionEnd` | 10 s |
+| `subagent_start` | `SubagentStart` | 10 s |
+| `subagent_stop` | `SubagentStop` | 10 s |
 
-`pre_tool_call` maps to `PermissionRequest` and **not** `PreToolUse`, and that is the
-whole reason Hermes gets real approvals. Hermes has no separate permission event: its
-`pre_tool_call` hook is the only thing that can stop a tool, so for the tools the
-`matcher` selects it *is* the permission gate. Mapping it to `PreToolUse` would leave
-the relay's `waits_for_answer` false, the relay would return immediately, and Allow/Deny
-from the island would never reach Hermes.
+`pre_llm_call` puts the prompt in the ticker and sets `thinking`; `post_tool_call` is display-only
+and sets `working`; the session and subagent events create, label and clear the pill.
 
-**Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated).
-The `matcher` is what keeps this usable: without it, `pre_tool_call` fires for every tool
-and you would approve every read.
+**Only `pre_tool_call` can block a tool** (`shell_hooks.py: _BLOCKING_EVENTS`). That is why it
+alone carries the `matcher` and the long timeout: it is the gate. `pre_tool_call` maps to
+`PermissionRequest` and **not** `PreToolUse` because Hermes has no permission event of its own —
+for the tools the `matcher` selects, `pre_tool_call` *is* the permission gate. Mapping it to
+`PreToolUse` would leave the relay's `waits_for_answer` false, the relay would return immediately,
+and Allow/Deny from the island would never reach Hermes.
+
+**Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated). The
+`matcher` is what keeps this usable: without it, `pre_tool_call` fires for every tool and you
+would approve every read.
+
+**What is verified, and what is not.** Verified on Windows against Hermes v0.21.5: `hermes hooks
+list` shows all seven; `hermes hooks doctor` reports all seven healthy; with Notch-Buddy closed a
+hook exits 0 with an empty receipt in under 0.2 s (fail-open); and the relay emits the correct
+Hermes receipts — allow `{}`, deny `{"action":"block","message":"Denied from Coucou"}`, no-answer
+block — proven headlessly. **Not tested:** clicking Allow/Deny in the island against a real Hermes
+session, the ~115 s timeout firing, and the pill/ticker in a live session. **macOS is untested end
+to end** — the Swift relay has not been compiled or run.
 
 ## OpenCode (macOS, Windows, Linux)
 
@@ -313,6 +363,14 @@ The permission is surfaced as a question in the ticker — answer it in OpenCode
 | `tool.execute.before` | `PreToolUse` |
 | `tool.execute.after` | `PostToolUse` |
 
+**What is verified, and what is not.** Verified headlessly on Windows: the generated plugin loads
+under Node, spawns the relay directly (no `/bin/sh`), and forwards the right payload for every
+event above — `session.diff` fans out one `PostToolUse` per changed file, `permission.asked` maps
+to `Notification` with an `Allow <tool>?` message, and every payload carries
+`coucou_agent: 'opencode'`. **Not tested:** a live OpenCode session — the pill, the ticker and the
+diffs have not been seen against a real running OpenCode, and neither has the app's own
+install/uninstall round-trip. macOS is untested end to end.
+
 ## Platform support matrix
 
 | Agent | macOS | Windows | Linux | Approvals | Why not, where not |
@@ -326,3 +384,8 @@ The permission is surfaced as a question in the ticker — answer it in OpenCode
 | **OpenCode** | ✅ | ✅ | ✅ | ❌ | plugin API cannot return a decision |
 | **Hermes** | ✅ | ✅ | ✅ | ✅ | — |
 | Amp | ✅ | ❌ | ❌ | ❌ | mac-only plugin path |
+
+**On "macOS ✅" for Hermes and OpenCode:** the macOS code paths exist, but the Swift relay has
+not been compiled or run on this branch — no Swift toolchain was available when the work was
+done. The Windows paths are the ones that were exercised. Treat the macOS column as *implemented,
+untested* until Tasks 3-5 are repeated on a Mac.

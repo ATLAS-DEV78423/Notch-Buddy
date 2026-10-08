@@ -20,10 +20,20 @@
 
 ## Unreleased
 
+- **The Hermes config path on Windows is fixed.** Hermes resolves its home as `$HERMES_HOME` if
+  set, otherwise `%LOCALAPPDATA%\hermes` on Windows and `~/.hermes` on macOS and Linux. The
+  installer used to write `~/.hermes/config.yaml` on every platform, so on Windows it reported
+  success and Hermes never loaded the hooks. It now resolves the home the way Hermes does,
+  verified with `hermes config path` *(Windows; macOS/Linux unchanged)*
+- **Hermes sessions now carry their full lifecycle.** Coucou installs **seven** shell hooks —
+  `pre_llm_call`, `pre_tool_call`, `post_tool_call`, `on_session_start`, `on_session_end`,
+  `subagent_start`, `subagent_stop` — so a Hermes session creates its pill cleanly, shows subagent
+  steps and clears on session end. Only `pre_tool_call` can block a tool, which is why it alone
+  carries the `matcher` and the 130 s timeout *(macOS, Windows, Linux)*
 - Hermes Agent sessions show up in the notch: see every step live, and approve or deny
   Hermes tool calls right from the island. Hermes' `pre_tool_call` hook can block, so a
   Deny from Coucou actually stops the tool. Install from Settings → Hermes; Coucou shows
-  what will change in `~/.hermes/config.yaml` and backs it up before writing *(macOS, Windows, Linux)*
+  what will change in the Hermes config and backs it up before writing *(macOS, Windows, Linux)*
 - OpenCode now works on Windows and Linux, not just macOS: the plugin installs to the same
   `~/.config/opencode/plugins/` path on every platform. OpenCode permissions are shown in
   the ticker and answered in OpenCode's own terminal — its plugin API cannot return a
