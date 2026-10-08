@@ -129,6 +129,11 @@ def main():
     assert norm("post_tool_call") == "PostToolUse", norm("post_tool_call")
     assert norm("pre_llm_call") == "UserPromptSubmit", norm("pre_llm_call")
 
+    # OpenCode events are forwarded untouched — the plugin emits canonical names.
+    assert norm("session.created") == "session.created"
+    assert norm("permission.asked") == "permission.asked"
+    assert norm("tool.execute.before") == "tool.execute.before"
+
     # The lifecycle events. Deleting any one of these mappings lets a Hermes
     # session leak its pill (never created / never removed) or lose subagent
     # activity, so each is pinned individually — the pure-dialect assertions

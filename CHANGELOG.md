@@ -40,6 +40,16 @@
   decision, so Coucou does not pretend to *(macOS, Windows, Linux)*
 - OpenCode sessions show file diffs in the ticker, and every agent pill now uses its
   declared colour on Windows and Linux instead of a random one
+- Hermes on Windows: the installer now writes `%LOCALAPPDATA%\hermes\config.yaml` — the path
+  Hermes actually reads — instead of `~/.hermes/config.yaml`, and installs all seven shell
+  hooks so a Hermes session gets its pill, its subagent steps and a clean teardown. The relay
+  speaks Hermes' receipt shape on Windows too, so Deny from the island blocks a tool and a
+  timeout blocks rather than silently allowing. Verified against Hermes v0.21.5 on Windows:
+  `hermes hooks list` shows all seven, `hermes hooks doctor` reports them healthy, the deny,
+  timeout and unreachable paths were exercised headless through the built relay (9 Rust tests +
+  17 Tauri tests + macOS relay dialect tests pass), and a closed Coucou leaves Hermes untouched.
+  Not yet verified: the live Allow/Deny card in the island against a real Hermes session, the
+  ~115 s no-answer timeout, and a live pill/ticker. macOS is untested here (no Swift toolchain).
 
 ## 0.2.0 — October 6, 2026
 
