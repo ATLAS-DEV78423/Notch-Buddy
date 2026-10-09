@@ -6,8 +6,9 @@
 // exactly as on macOS, because this canvas draws its own.
 
 import { State } from "../core/state";
+import { Ease } from "../core/anim";
 import {
-  USC, eIn, eInOut, eOut, lerp, progressAt,
+  USC, lerp, progressAt,
   type UploadEyeShape, type UploadFrame,
 } from "./sequence";
 
@@ -392,13 +393,13 @@ export class UploadCanvas {
     const m = f.mouthRect;
     const W0 = 34;
     const H0 = 42;
-    const p = eIn(f.suck);
-    const topY = lerp(cy - H0 / 2, m.y - 2, eInOut(f.suck));
-    const hs = lerp(1.08, 0.55, eInOut(f.suck));
+    const p = Ease.easeIn(f.suck);
+    const topY = lerp(cy - H0 / 2, m.y - 2, Ease.inOut(f.suck));
+    const hs = lerp(1.08, 0.55, Ease.inOut(f.suck));
     const Hh = H0 * hs;
     const sc = lerp(1, 0.55, p);
-    const q = eOut(f.suck);
-    const fCx = lerp(cx, m.x + m.w / 2, eOut(f.suck));
+    const q = Ease.out(f.suck);
+    const fCx = lerp(cx, m.x + m.w / 2, Ease.out(f.suck));
     const wob = Math.sin(f.suck * Math.PI * 2) * 0.1 * (1 - p);
     const clipY = m.y + m.h * 0.5;
 

@@ -7,6 +7,7 @@ export const Ease = {
   out: (t: number) => 1 - Math.pow(1 - t, 3),
   inOut: (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
   back: (t: number) => {
+    if (t <= 0) return 0;
     const c1 = 1.7;
     const c3 = c1 + 1;
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
@@ -26,6 +27,7 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): Eas
   const cx = (t: number) => ((1 - t) ** 2 * 3 * t * x1) + (3 * (1 - t) * t * t * x2) + t ** 3;
   const cy = (t: number) => ((1 - t) ** 2 * 3 * t * y1) + (3 * (1 - t) * t * t * y2) + t ** 3;
   return (x) => {
+    if (x >= 1) return y2;
     // Newton-ish bisection on x — 12 iterations is plenty at 60 fps.
     let lo = 0;
     let hi = 1;
@@ -152,4 +154,38 @@ export class Tracked {
       }
     }
   }
+}
+
+// ── Motion vocabulary shared by every animated surface ─────────────────────────
+
+/** SPEC §4 stagger: 35 ms per item (mini pills, view rows). */
+export const STAGGER_MS = 35;
+
+/** CSS transition-delay for stagger item `i` (0-based). */
+export function staggerDelay(i: number): string {
+  return `${i * STAGGER_MS}ms`;
+}
+
+// ── Reduced motion (OS setting only — see design spec §1) ─────────────────────
+
+let reduced = false;
+let reducedQuery: MediaQueryList | null = null;
+
+export function prefersReduced(): boolean {
+  return reduced;
+}
+
+/** Test hook + media-listener target. */
+export function setPrefersReduced(v: boolean): void {
+  reduced = v;
+}
+
+/** Call once at boot. Safe to call without a DOM (tests): it no-ops. */
+export function initMotionPreferences(): void {
+  if (typeof window === "undefined") return;
+  reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  reduced = reducedQuery.matches;
+  reducedQuery.addEventListener("change", () => {
+    reduced = reducedQuery?.matches ?? false;
+  });
 }

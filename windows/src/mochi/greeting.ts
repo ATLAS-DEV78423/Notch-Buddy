@@ -3,6 +3,7 @@
 
 import { Sound } from "../core/sound";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
+import { Ease } from "../core/anim";
 
 // ── Timing (mirrors greeting-v2.html `T`) ─────────────────────────────────────
 
@@ -46,17 +47,6 @@ const SMALL_H = NOTCH_H;
 
 // ── Easing ────────────────────────────────────────────────────────────────────
 
-const E = {
-  out: (t: number) => 1 - Math.pow(1 - t, 3),
-  easeIn: (t: number) => t * t * t,
-  inOut: (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
-  back: (t: number) => {
-    const c1 = 1.70158;
-    const c3 = c1 + 1;
-    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-  },
-};
-
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a), 0, 1);
@@ -81,10 +71,10 @@ function greetPose(t: number): Pose {
   const iw = lerp(NOTCH_W, 640, g);
   const ih = lerp(NOTCH_H, 150, g);
 
-  const gg = E.back(seg(t, 0.02, T.grow));
+  const gg = Ease.back(seg(t, 0.02, T.grow));
   const hb = lerp(3, HB, gg);
   let x = C0.x;
-  let y = lerp(16, C0.y, E.out(seg(t, 0.02, T.grow)));
+  let y = lerp(16, C0.y, Ease.out(seg(t, 0.02, T.grow)));
   let sx = 1;
   let sy = 1;
   let tilt = 0;
@@ -124,17 +114,17 @@ function greetPose(t: number): Pose {
   if (t >= T.pop1 && t < T.content0) { lookX = 0.55; lookY = -0.45; }
   if (t >= T.content0 && t < T.down1) { lookX = -0.3; lookY = 0.6; }
   if (t >= T.down1) {
-    const k = E.inOut(seg(t, T.down1, T.down1 + 0.35));
+    const k = Ease.inOut(seg(t, T.down1, T.down1 + 0.35));
     lookX = lerp(-0.3, 0, k);
     lookY = lerp(0.6, 0, k);
   }
 
   const handL = t < T.tuck0
-    ? E.back(seg(t, T.pop0, T.pop0 + 0.14))
-    : 1 - E.easeIn(seg(t, T.tuck0, T.tuck1 - 0.03));
+    ? Ease.back(seg(t, T.pop0, T.pop0 + 0.14))
+    : 1 - Ease.easeIn(seg(t, T.tuck0, T.tuck1 - 0.03));
   const handR = t < T.tuck0
-    ? E.back(seg(t, T.pop0 + 0.04, T.pop0 + 0.18))
-    : 1 - E.easeIn(seg(t, T.tuck0 + 0.03, T.tuck1));
+    ? Ease.back(seg(t, T.pop0 + 0.04, T.pop0 + 0.18))
+    : 1 - Ease.easeIn(seg(t, T.tuck0 + 0.03, T.tuck1));
   const wave = t >= T.pop1 && t < T.tuck0 ? t - T.pop1 : -1;
 
   return {
@@ -142,9 +132,9 @@ function greetPose(t: number): Pose {
     eye, open, eyeRoll,
     lookX, lookY,
     handL, handR, wave,
-    badge: E.back(seg(t, T.badge, T.badge + 0.28)),
-    tint: 0.6 * E.inOut(seg(t, T.tint0, T.tint1)),
-    halo: E.out(seg(t, 0.3, 0.7)),
+    badge: Ease.back(seg(t, T.badge, T.badge + 0.28)),
+    tint: 0.6 * Ease.inOut(seg(t, T.tint0, T.tint1)),
+    halo: Ease.out(seg(t, 0.3, 0.7)),
     haloBlue: seg(t, T.tint0, T.tint1),
     minis: 0,
     fx: 1,
@@ -174,7 +164,7 @@ function pose(t: number, tc: number): Pose {
   if (t < tc) return greetPose(Math.min(t, T.end + 10));
   const a = greetPose(tc);
   const b = smallPose();
-  const e = E.inOut(seg(t, tc, tc + T.COLLAPSE));
+  const e = Ease.inOut(seg(t, tc, tc + T.COLLAPSE));
   const p: Pose = { ...a };
   p.iw = lerp(a.iw, b.iw, e);
   p.ih = lerp(a.ih, b.ih, e);
@@ -198,7 +188,7 @@ function pose(t: number, tc: number): Pose {
   p.open = bk > 0 && bk < 1 ? 1 - Math.sin(Math.PI * bk) * 0.94 : 1;
   p.lookX = a.lookX * (1 - e);
   p.lookY = a.lookY * (1 - e);
-  p.minis = E.back(seg(t, tc + 0.24, tc + 0.42));
+  p.minis = Ease.back(seg(t, tc + 0.24, tc + 0.42));
   p.fx = 1 - seg(t, tc, tc + 0.2);
   return p;
 }
@@ -436,7 +426,7 @@ function drawParticles(x: CanvasRenderingContext2D, t: number, p: Pose) {
   for (const ring of PARTICLES.rings) {
     const k = seg(t, ring.t0, ring.t0 + 1.35);
     if (k <= 0 || k >= 1) continue;
-    const rx = lerp(14, 380, E.out(k));
+    const rx = lerp(14, 380, Ease.out(k));
     const ry = rx * 0.34;
     const fade = (1 - k) * (k < 0.08 ? k / 0.08 : 1) * p.fx * p.card;
     for (const dot of ring.dots) {
@@ -448,7 +438,7 @@ function drawParticles(x: CanvasRenderingContext2D, t: number, p: Pose) {
   for (const s of PARTICLES.streaks) {
     const k = seg(t, s.t0, s.t0 + 0.6);
     if (k <= 0 || k >= 1) continue;
-    const dist = s.sp * E.out(k) * 0.9 + 10;
+    const dist = s.sp * Ease.out(k) * 0.9 + 10;
     const alpha = (1 - k) * p.fx;
     x.strokeStyle = s.col + Math.round(alpha * 255).toString(16).padStart(2, "0");
     x.lineWidth = 1.6;

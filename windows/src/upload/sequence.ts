@@ -6,6 +6,8 @@
 // for one frame. All coordinates are island points (the island is 640 × 176),
 // so every constant below is the macOS constant unchanged.
 
+import { Ease } from "../core/anim";
+
 /** Constants — exact mirror of USC in UploadSequenceEngine.swift. */
 export const USC = {
   W: 640,
@@ -50,15 +52,6 @@ export const USC = {
 
 // ── Easing ──────────────────────────────────────────────────────────────────
 
-export const eOut = (t: number) => 1 - Math.pow(1 - t, 3);
-export const eIn = (t: number) => t * t * t;
-export const eInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-export const eBack = (t: number) => {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};
-
 export const seg = (t: number, a: number, b: number) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -66,18 +59,18 @@ export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 function squeezeY(t: number): number {
   const t0 = USC.T_SUCK_END, t1 = t0 + 0.07, t2 = t0 + 0.2, t3 = USC.T_CHEW1;
   if (t <= t0) return 1.06;
-  if (t <= t1) return lerp(1.06, 0.82, eOut(seg(t, t0, t1)));
-  if (t <= t2) return lerp(0.82, 1.1, eOut(seg(t, t1, t2)));
-  if (t <= t3) return lerp(1.1, 1.0, eInOut(seg(t, t2, t3)));
+  if (t <= t1) return lerp(1.06, 0.82, Ease.out(seg(t, t0, t1)));
+  if (t <= t2) return lerp(0.82, 1.1, Ease.out(seg(t, t1, t2)));
+  if (t <= t3) return lerp(1.1, 1.0, Ease.inOut(seg(t, t2, t3)));
   return 1.0;
 }
 
 function squeezeX(t: number): number {
   const t0 = USC.T_SUCK_END, t1 = t0 + 0.07, t2 = t0 + 0.2, t3 = USC.T_CHEW1;
   if (t <= t0) return 0.97;
-  if (t <= t1) return lerp(0.97, 1.14, eOut(seg(t, t0, t1)));
-  if (t <= t2) return lerp(1.14, 0.95, eOut(seg(t, t1, t2)));
-  if (t <= t3) return lerp(0.95, 1.0, eInOut(seg(t, t2, t3)));
+  if (t <= t1) return lerp(0.97, 1.14, Ease.out(seg(t, t0, t1)));
+  if (t <= t2) return lerp(1.14, 0.95, Ease.out(seg(t, t1, t2)));
+  if (t <= t3) return lerp(0.95, 1.0, Ease.inOut(seg(t, t2, t3)));
   return 1.0;
 }
 
@@ -86,9 +79,9 @@ function squeezeX(t: number): number {
  * last push. A plain ease-out reads as a different animation entirely.
  */
 export function uploadProgressCurve(u: number): number {
-  if (u < 0.4) return 0.6 * eOut(u / 0.4);
-  if (u < 0.85) return 0.6 + 0.32 * eInOut((u - 0.4) / 0.45);
-  return 0.92 + 0.08 * eIn((u - 0.85) / 0.15);
+  if (u < 0.4) return 0.6 * Ease.out(u / 0.4);
+  if (u < 0.85) return 0.6 + 0.32 * Ease.inOut((u - 0.4) / 0.45);
+  return 0.92 + 0.08 * Ease.easeIn((u - 0.85) / 0.15);
 }
 
 export function progressAt(t: number, progStart: number, progEnd: number): number {
@@ -355,7 +348,7 @@ class UploadSequence {
     // Mouth. The post-drop close only runs once the drop has actually happened.
     const t = this.t;
     if (!isDragging && t >= USC.T_SUCK_END) {
-      this.mouth.v = Math.max(0, lerp(USC.MOUTH_MAX, 0, eIn(seg(t, USC.T_SUCK_END, USC.T_CLOSE_END))));
+      this.mouth.v = Math.max(0, lerp(USC.MOUTH_MAX, 0, Ease.easeIn(seg(t, USC.T_SUCK_END, USC.T_CLOSE_END))));
     } else {
       let mt = 0;
       if (this.entered >= 0) mt = this.locked || !isDragging ? USC.MOUTH_OPEN : USC.MOUTH_AJAR;
@@ -387,9 +380,9 @@ class UploadSequence {
 
     // Morph: 0→1 on entry, 1→0 shrinking to a ball, 0→1 growing back at choose.
     let morph: number;
-    if (pt < USC.T_CHEW_END) morph = eBack(seg(pt, entered, entered + 0.38));
-    else if (pt < growStart) morph = 1 - eOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
-    else morph = eBack(seg(pt, growStart, growEnd));
+    if (pt < USC.T_CHEW_END) morph = Ease.back(seg(pt, entered, entered + 0.38));
+    else if (pt < growStart) morph = 1 - Ease.out(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
+    else morph = Ease.back(seg(pt, growStart, growEnd));
     f.morph = Math.max(0, Math.min(morph, 1.08));
 
     // Position and diameter.
@@ -397,7 +390,7 @@ class UploadSequence {
     let y = this.by.v;
     let d: number = USC.D_BOX;
     if (pt >= USC.T_CHEW_END && pt < USC.T_PROG_START) {
-      const k = eInOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
+      const k = Ease.inOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
       x = lerp(this.bx.v, USC.BAR_X0, k);
       y = lerp(this.by.v, USC.BAR_Y, k);
       d = lerp(USC.D_BOX, 14, k);
@@ -413,10 +406,10 @@ class UploadSequence {
       y = USC.BAR_Y - 8 * Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.2));
     }
     if (pt >= growStart) {
-      const k = eInOut(seg(pt, growStart, growEnd));
+      const k = Ease.inOut(seg(pt, growStart, growEnd));
       x = lerp(USC.BAR_X1, USC.CHOOSE_X, k);
       y = lerp(USC.BAR_Y, USC.CHOOSE_Y, k);
-      d = lerp(14, USC.CHOOSE_D, eBack(seg(pt, growStart, growEnd)));
+      d = lerp(14, USC.CHOOSE_D, Ease.back(seg(pt, growStart, growEnd)));
     }
     f.x = x;
     f.y = y;
@@ -426,12 +419,12 @@ class UploadSequence {
     let sx = 1;
     let sy = 1;
     if (pt >= USC.T_DROP && pt < USC.T_SUCK_START) {
-      const k = eOut(seg(pt, USC.T_DROP, USC.T_SUCK_START));
+      const k = Ease.out(seg(pt, USC.T_DROP, USC.T_SUCK_START));
       sy = lerp(1, 0.92, k);
       sx = lerp(1, 1.06, k);
     }
     if (pt >= USC.T_SUCK_START && pt < USC.T_SUCK_END) {
-      const k = eInOut(seg(pt, USC.T_SUCK_START, USC.T_SUCK_END));
+      const k = Ease.inOut(seg(pt, USC.T_SUCK_START, USC.T_SUCK_END));
       sy = lerp(0.92, 1.06, k);
       sx = lerp(1.06, 0.97, k);
     }
@@ -490,12 +483,12 @@ class UploadSequence {
     f.zoneAlpha = 1 - seg(pt, USC.T_CHEW_END, USC.T_CHEW_END + 0.2);
     f.textAlpha = f.zoneAlpha * (x > USC.TEXT_X - 40 && isDragging ? 0.25 : 1);
     f.barReveal =
-      eOut(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25)) * (1 - seg(pt, growStart, growStart + 0.2));
+      Ease.out(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25)) * (1 - seg(pt, growStart, growStart + 0.2));
     f.barAlpha =
       seg(pt, USC.T_BAR_IN + 0.05, USC.T_BAR_IN + 0.25) * (1 - seg(pt, growStart, growStart + 0.2));
     f.progress = progressAt(pt, USC.T_PROG_START, progEnd);
     f.flash = pt >= progEnd ? Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.3)) : 0;
-    f.check = pt >= progEnd ? eBack(seg(pt, progEnd, progEnd + 0.25)) : 0;
+    f.check = pt >= progEnd ? Ease.back(seg(pt, progEnd, progEnd + 0.25)) : 0;
 
     const hoverGreen = f.zoneOver ? 0.22 : 0;
     let uploadGreen = 0;
