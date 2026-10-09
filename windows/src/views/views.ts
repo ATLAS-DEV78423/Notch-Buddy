@@ -602,6 +602,9 @@ function renderDashboardView(): HTMLElement {
   return h("div", { class: "dashboard-grid" },
     mediaWidget, statsWidget, timerWidget, weatherWidget, batteryWidget, bluetoothWidget);
 }
+/** Bar/fill width as a clamped 0-100 % style value. */
+const pct = (n: number) => `${Math.max(0, Math.min(100, n))}%`;
+
 function buildMediaView(): ViewHost {
   const empty = h("div", { class: "view-media-empty" }, "No media playing");
   const art = h("img", { class: "media-album-art", alt: "" });
@@ -642,10 +645,10 @@ function buildMediaView(): ViewHost {
       if (!m) return;
       // Art only rides track changes — never blank it on a 1 Hz tick.
       if (m.albumArt && art.getAttribute("src") !== m.albumArt) art.src = m.albumArt;
-      art.style.display = art.getAttribute("src") ? "" : "none";
+      art.style.display = m.albumArt ? "" : "none";
       track.textContent = m.track;
       artist.textContent = m.artist;
-      fill.style.width = `${m.duration > 0 ? Math.min(100, (m.position / m.duration) * 100) : 0}%`;
+      fill.style.width = pct(m.duration > 0 ? (m.position / m.duration) * 100 : 0);
       playBtn.textContent = m.playing ? "⏸" : "▶";
     },
   };
@@ -676,7 +679,6 @@ function buildStatsView(): ViewHost {
   const ram = row("RAM");
   const rx = row("Net ↓");
   const tx = row("Net ↑");
-  const pct = (n: number) => `${Math.max(0, Math.min(100, n))}%`;
   return {
     el: h("div", { class: "view" },
       h("div", { class: "view-stats" }, cpu.el, ram.el, rx.el, tx.el)),

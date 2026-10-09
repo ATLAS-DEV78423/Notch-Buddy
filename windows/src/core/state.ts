@@ -110,6 +110,25 @@ export const DEFAULT_SETTINGS: Settings = {
 
 type Listener = () => void;
 
+/** `media-state` payload — Rust sends `null` when the session ends. */
+export interface MediaState {
+  track: string;
+  artist: string;
+  albumArt: string;
+  playing: boolean;
+  position: number;
+  duration: number;
+  sourceApp: string;
+}
+
+/** `system-stats` payload — cpu/ram are 0-100 %, net* are bytes/sec. */
+export interface SystemStats {
+  cpu: number;
+  ram: number;
+  netRx: number;
+  netTx: number;
+}
+
 class AppState {
   mode: IslandMode = "hidden";
   view: IslandViewName = "overview";
@@ -144,8 +163,8 @@ class AppState {
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 
-  media: { track: string; artist: string; albumArt: string; playing: boolean; position: number; duration: number; sourceApp: string } | null = null;
-  stats: { cpu: number; ram: number; netRx: number; netTx: number } = { cpu: 0, ram: 0, netRx: 0, netTx: 0 };
+  media: MediaState | null = null;
+  stats: SystemStats = { cpu: 0, ram: 0, netRx: 0, netTx: 0 };
   volume: { level: number; muted: boolean } = { level: 0, muted: false };
   brightness: { level: number } = { level: 0 };
   bluetooth: { devices: Array<{ name: string; type: string; battery: number; connected: boolean }> } = { devices: [] };

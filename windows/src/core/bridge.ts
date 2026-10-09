@@ -5,7 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { State, type Settings } from "./state";
+import { State, type MediaState, type Settings, type SystemStats } from "./state";
 
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -198,18 +198,27 @@ export async function onEvent<T>(name: string, handler: (payload: T) => void) {
   return listen<T>(name, (e) => handler(e.payload));
 }
 
-export type MediaState = NonNullable<typeof State.media>;
-export type SystemStats = typeof State.stats;
-
 /**
  * media-state / system-stats land in State, so every subscriber — the
  * dashboard included — redraws through the usual State.notify() path.
  * `media-changed` needs no handler: the next media-state carries the state.
  */
 export function registerMediaStatsListeners() {
-  void onEvent<MediaState>("media-state", (payload) => {
-    // Rust only ships album art with track changes: keep the art we already have.
-    State.media = payload.albumArt ? payload : { ...payload, albumArt: State.media?.albumArt ?? "" };
+  void onEvent<MediaState | null>("media-state", (payload) => {
+    if (payload == null) {
+      State.media = null;
+    } else if (payload.albumArt) {
+      State.media = payload;
+    } else {
+      // Art only rides track changes: keep it for the same track, store ""
+      // when the new track simply has no thumbnail.
+      const prev = State.media;
+      const keepArt =
+        prev != null && prev.track === payload.track && prev.artist === payload.artist
+          ? prev.albumArt
+          : "";
+      State.media = { ...payload, albumArt: keepArt };
+    }
     State.notify();
   });
   void onEvent<SystemStats>("system-stats", (stats) => {
