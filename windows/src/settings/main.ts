@@ -6,10 +6,7 @@ import "./settings.css";
 import { Bridge, onEvent, type HookStatus, type AgentStatus, type AgentPreview } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
-
-// TODO: import type { BackgroundEffect } from "../views/backgroundEffects" once
-// Task 16 lands that file; kept local until then so the settings build stands alone.
-type BackgroundEffect = 'off' | 'visualizer' | 'waves' | 'synthwave' | 'fireflies' | 'holographic' | 'topographic' | 'albumGlow' | 'ambient' | 'rgb';
+import type { BackgroundEffect } from "../views/backgroundEffects";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
@@ -473,10 +470,14 @@ function appearanceSection(): HTMLElement {
   for (const e of BG_EFFECTS) {
     const btn = h("button", {
       class: "fx-opt",
+      "aria-pressed": e.id === fx ? "true" : "false",
       onclick: () => {
         fx = e.id;
         localStorage.setItem("coucou.bgEffect", fx);
-        for (const [id, el] of fxButtons) el.classList.toggle("selected", id === fx);
+        for (const [id, el] of fxButtons) {
+          el.classList.toggle("selected", id === fx);
+          el.setAttribute("aria-pressed", String(id === fx));
+        }
       },
     });
     btn.append(h("i", { class: "fx-thumb", style: `background:${e.preview}` }), h("span", { text: e.label }));
@@ -492,11 +493,15 @@ function appearanceSection(): HTMLElement {
     const sw = h("button", {
       class: "swatch",
       title: color,
+      "aria-pressed": color === accent ? "true" : "false",
       style: `background:${color}`,
       onclick: () => {
         accent = color;
         localStorage.setItem("coucou.accentColor", accent);
-        for (const [c, el] of swatches) el.classList.toggle("selected", c === accent);
+        for (const [c, el] of swatches) {
+          el.classList.toggle("selected", c === accent);
+          el.setAttribute("aria-pressed", String(c === accent));
+        }
       },
     });
     if (color === accent) sw.classList.add("selected");
