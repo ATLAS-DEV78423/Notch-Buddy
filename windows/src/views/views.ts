@@ -172,7 +172,12 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const group = groupOfView(v);
       for (const [id, tab] of groupTabs) tab.classList.toggle("active", id === group);
       pillsEl.style.display = group === "agents" ? "none" : "flex";
-      for (const [pv, pill] of subPills) pill.classList.toggle("active", pv === v);
+      // Only the active group's pills: rendering all eight pushed the last
+      // four pills and the gear/sound buttons past the island's right edge.
+      for (const [pv, pill] of subPills) {
+        pill.style.display = groupOfView(pv) === group ? "" : "none";
+        pill.classList.toggle("active", pv === v);
+      }
       el.style.opacity = v === "confused" ? "0" : "1";
     },
   };
