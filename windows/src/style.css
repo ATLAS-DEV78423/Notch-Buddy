@@ -176,14 +176,16 @@ body {
 }
 
 /* Compact status strip — timer / media / battery, between Mochi (canvas ends
-   ~x57) and the mini grid (starts x233). Right-aligned: when space runs out
-   .cs-media shrinks first, timer and battery never do. */
+   ~x57) and the mini grid (starts x233.5). Both edges measured to the
+   NEIGHBOURING element's near edge: left gap 62 − 57 = 5px, right gap
+   233.5 − 226 = 7.5px. Right-aligned: overflow is absorbed by .cs-media
+   (shrink 1) long before .cs-battery (shrink 0.25) clips; timer never shrinks. */
 #compact-status {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 62px;
-  right: 34px;
+  right: 62px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -208,7 +210,10 @@ body {
   text-overflow: ellipsis;
 }
 #compact-status .cs-battery {
-  flex: none;
+  flex: 0 0.25 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
 
