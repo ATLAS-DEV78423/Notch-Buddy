@@ -653,7 +653,156 @@ function buildMediaView(): ViewHost {
     },
   };
 }
-function renderControlCenterView(): HTMLElement { return h("div", { class: "view-control-center" }, "Control Center"); }
+// ── Control center ───────────────────────────────────────────────────────────
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+function buildControlCenter(): ViewHost {
+  /** Drag (pointerdown/move) + scroll wheel. Writes State locally right away,
+   *  invokes the command debounced — the PS worker costs 1-3 s to spawn. */
+  const makeSlider = (write: (v: number) => void, commit: (v: number) => void) => {
+    const fill = h("div", { class: "cc-slider-fill" });
+    const track = h("div", { class: "cc-slider" }, fill);
+    let dragging = false;
+    let timer = 0;
+    let value = 0;
+
+    const at = (clientX: number) => {
+      const r = track.getBoundingClientRect();
+      return r.width > 0 ? clamp01((clientX - r.left) / r.width) : value;
+    };
+    const apply = (v: number, flush = false) => {
+      value = clamp01(v);
+      write(value);
+      fill.style.width = pct(value * 100);
+      window.clearTimeout(timer);
+      if (flush) commit(value);
+      else timer = window.setTimeout(() => commit(value), 150);
+    };
+
+    track.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      track.setPointerCapture(e.pointerId);
+      apply(at(e.clientX));
+    });
+    track.addEventListener("pointermove", (e) => {
+      if (dragging) apply(at(e.clientX));
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      apply(value, true);
+    };
+    track.addEventListener("pointerup", end);
+    track.addEventListener("pointercancel", end);
+    track.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        apply(value + (e.deltaY < 0 ? 0.05 : -0.05));
+      },
+      { passive: false },
+    );
+
+    return {
+      el: track,
+      sync(v: number) {
+        if (dragging) return; // the drag owns the fill until pointerup
+        value = clamp01(v);
+        fill.style.width = pct(value * 100);
+      },
+    };
+  };
+
+  const volume = makeSlider(
+    (v) => void (State.volume.level = v),
+    (v) => void Bridge.setVolume(v),
+  );
+  const brightness = makeSlider(
+    (v) => void (State.brightness.level = v),
+    (v) => void Bridge.setBrightness(v),
+  );
+
+  const muteBtn = h(
+    "button",
+    { class: "cc-icon-btn", title: "Mute", onclick: () => void Bridge.toggleMute() },
+    "🔊",
+  );
+
+  const toggle = (label: string, run: () => Promise<boolean | null>) => {
+    const btn = h("button", {
+      class: "cc-toggle",
+      text: label,
+      onclick: async () => {
+        const on = await run();
+        if (on !== null) btn.classList.toggle("on", on);
+      },
+    });
+    return btn;
+  };
+  const nightBtn = toggle("Night light", () => Bridge.toggleNightLight());
+  const dndBtn = toggle("Do not disturb", () => Bridge.toggleDnd());
+
+  const note = h("span", { class: "cc-note" });
+  let noteTimer = 0;
+  const boostBtn = h("button", {
+    class: "cc-toggle",
+    text: "Memory boost",
+    onclick: async () => {
+      window.clearTimeout(noteTimer);
+      note.textContent = "…";
+      const freed = await Bridge.memoryBoost();
+      note.textContent = freed === null ? "Failed" : `${freed} MB freed`;
+      noteTimer = window.setTimeout(() => void (note.textContent = ""), 3000);
+    },
+  });
+
+  /** FN-key changes emit no events: fetching on open is the only chance to see
+   *  them. No polling by design. */
+  const seed = () => {
+    void Bridge.getVolume().then((v) => {
+      if (!v) return;
+      State.volume.level = v.level;
+      State.volume.muted = v.muted;
+      State.notify();
+    });
+    void Bridge.getBrightness().then((b) => {
+      if (!b) return;
+      State.brightness.level = b.level;
+      State.notify();
+    });
+  };
+  let shown = false;
+  State.subscribe(() => {
+    const on = State.view === "controlCenter" && State.mode === "expanded";
+    if (on && !shown) seed();
+    shown = on;
+  });
+
+  const el = h("div", { class: "view" },
+    h("div", { class: "view-control-center" },
+      h("div", { class: "cc-row" },
+        h("span", { class: "cc-label", text: "Volume" }),
+        volume.el,
+        muteBtn,
+      ),
+      h("div", { class: "cc-row" },
+        h("span", { class: "cc-label", text: "Brightness" }),
+        brightness.el,
+      ),
+      h("div", { class: "cc-row" }, nightBtn, dndBtn, boostBtn, note),
+    ),
+  );
+
+  return {
+    el,
+    sync() {
+      volume.sync(State.volume.level);
+      brightness.sync(State.brightness.level);
+      muteBtn.textContent = State.volume.muted ? "🔇" : "🔊";
+    },
+  };
+}
 function renderBluetoothView(): HTMLElement { return h("div", { class: "view-bluetooth" }, "Bluetooth"); }
 function buildStatsView(): ViewHost {
   const NET_FULL_SCALE = 10 * 1024 * 1024; // 10 MB/s fills the bar.
@@ -738,7 +887,7 @@ export function buildViews(
   map.set("result", buildPlaceholder("Result", ""));
   map.set("dashboard", liveView(renderDashboardView));
   map.set("media", buildMediaView());
-  map.set("controlCenter", stubView(renderControlCenterView));
+  map.set("controlCenter", buildControlCenter());
   map.set("bluetooth", stubView(renderBluetoothView));
   map.set("stats", buildStatsView());
   map.set("pomodoro", stubView(renderPomodoroView));

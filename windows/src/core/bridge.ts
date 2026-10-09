@@ -121,6 +121,18 @@ export const Bridge = {
   mediaPrev: () => call<void>("media_prev"),
   /** `position` is seconds (f64 in Rust). */
   mediaSeek: (position: number) => call<void>("media_seek", { position }),
+
+  // ── Control center ─────────────────────────────────────────────────────────
+  /** `level` is 0..1 — the worker speaks percents, Rust scales it. */
+  getVolume: () => call<{ level: number; muted: boolean }>("get_volume"),
+  setVolume: (level: number) => call<void>("set_volume", { level }),
+  toggleMute: () => call<boolean>("toggle_mute"),
+  getBrightness: () => call<{ level: number }>("get_brightness"),
+  setBrightness: (level: number) => call<void>("set_brightness", { level }),
+  toggleNightLight: () => call<boolean>("toggle_night_light"),
+  toggleDnd: () => call<boolean>("toggle_dnd"),
+  /** MB of RAM freed. Blocks the PowerShell worker ~1 s while it runs. */
+  memoryBoost: () => call<number>("memory_boost"),
 };
 
 export interface IntegrationUpdate {
@@ -223,6 +235,24 @@ export function registerMediaStatsListeners() {
   });
   void onEvent<SystemStats>("system-stats", (stats) => {
     State.stats = stats;
+    State.notify();
+  });
+}
+
+/**
+ * volume-changed / brightness-changed follow the island's own set commands —
+ * external FN-key changes emit nothing, so the control center seeds itself
+ * with get_volume / get_brightness when it opens. The payloads mutate the
+ * existing State objects in place: the sliders hold a reference to them.
+ */
+export function registerControlCenterListeners() {
+  void onEvent<{ level: number; muted: boolean }>("volume-changed", (payload) => {
+    State.volume.level = payload.level;
+    State.volume.muted = payload.muted;
+    State.notify();
+  });
+  void onEvent<{ level: number }>("brightness-changed", (payload) => {
+    State.brightness.level = payload.level;
     State.notify();
   });
 }
