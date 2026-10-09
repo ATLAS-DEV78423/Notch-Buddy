@@ -3,6 +3,7 @@
 mod agents;
 mod bluetooth;
 mod claude;
+mod clipboard;
 mod files;
 mod hooks;
 mod integrations;
@@ -488,6 +489,7 @@ pub fn run() {
             integrations::start(handle.clone());
             media::setup_media(&handle, gate.clone());
             system_stats::setup_system_stats(&handle, gate.clone());
+            clipboard::setup_clipboard(&handle, gate.clone());
             Ok(())
         })
         .run(tauri::generate_context!())
