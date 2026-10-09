@@ -1117,6 +1117,31 @@ export function buildBanners(): ViewHost {
   };
 }
 
+/** Compact peek bar status: timer > media > battery, right of Mochi, left of
+ *  the mini grid. sync() runs on every State.notify(), so the 1 Hz timer tick
+ *  and the media/battery events land without any extra plumbing. */
+export function buildCompactStatus(): ViewHost {
+  const el = h("div", { id: "compact-status" });
+  return {
+    el,
+    sync() {
+      const on = State.mode === "compact";
+      el.style.opacity = on ? "1" : "0";
+      if (!on) return;
+      const parts: HTMLElement[] = [];
+      const t = State.timer;
+      if (t.running) {
+        parts.push(h("span", { class: "cs-timer" }, `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`));
+      }
+      const m = State.media;
+      if (m?.playing) parts.push(h("span", { class: "cs-media" }, `♪ ${m.track}`));
+      const b = State.battery;
+      parts.push(h("span", { class: "cs-battery" }, `${b.charging ? "⚡" : ""}${b.level}%`));
+      el.replaceChildren(...parts);
+    },
+  };
+}
+
 /** Rebuilds on every sync — that runs once per State.notify()
  *  while the view is active, so State-driven widgets actually redraw. */
 function liveView(render: () => HTMLElement): ViewHost {

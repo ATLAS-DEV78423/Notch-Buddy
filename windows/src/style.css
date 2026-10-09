@@ -175,6 +175,43 @@ body {
   transition: opacity 0.25s ease-in-out;
 }
 
+/* Compact status strip — timer / media / battery, between Mochi (canvas ends
+   ~x57) and the mini grid (starts x233). Right-aligned: when space runs out
+   .cs-media shrinks first, timer and battery never do. */
+#compact-status {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 62px;
+  right: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  overflow: hidden;
+  font: 500 11px var(--font);
+  color: var(--dim-3);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease-in-out;
+}
+#compact-status .cs-timer {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+#compact-status .cs-media {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#compact-status .cs-battery {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
    hands, badges and particles are not cut off. */
 .mini {
