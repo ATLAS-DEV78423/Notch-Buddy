@@ -78,6 +78,10 @@ export class Spring {
   }
 
   step(dt: number) {
+    if (prefersReduced()) {
+      this.set(this.target);
+      return;
+    }
     const steps = Math.max(1, Math.ceil(dt / (1 / 240)));
     const h = dt / steps;
     for (let i = 0; i < steps; i++) {
@@ -138,6 +142,10 @@ export class Tracked {
   }
 
   step(dt: number, now = performance.now()) {
+    if (prefersReduced()) {
+      this.jump(this.spring.target);
+      return;
+    }
     if (this.mode === "spring") {
       this.spring.step(dt);
       if (this.spring.settled) {

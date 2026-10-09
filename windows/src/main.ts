@@ -11,12 +11,14 @@ import {
   registerWeatherBatteryClipboardListeners,
 } from "./core/bridge";
 import { Sound } from "./core/sound";
+import { initMotionPreferences } from "./core/anim";
 import { startTimerTick, State, type Settings } from "./core/state";
 import { Island } from "./island/island";
 import { registerHookHandlers } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 
 async function main() {
+  initMotionPreferences();
   const root = document.getElementById("root");
   if (!root) return;
 

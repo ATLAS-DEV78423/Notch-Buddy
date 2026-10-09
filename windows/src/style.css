@@ -1573,3 +1573,29 @@ input[type="range"]::-webkit-slider-thumb {
 .int-card.detail {
   padding-top: 8px;
 }
+
+/* ── Reduced motion (OS setting only) ───────────────────────────────────────
+   Windows: Settings → Accessibility → Animation effects → off. Everything
+   collapses to near-instant; infinite decorations stop; springs snap via JS. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .shimmer,
+  .typing i,
+  .pulse,
+  .drop-frame rect,
+  .bt-btn.pending::before {
+    animation: none !important;
+  }
+
+  .view.on .stagger {
+    animation: none !important;
+  }
+}

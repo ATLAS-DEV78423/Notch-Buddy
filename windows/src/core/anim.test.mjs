@@ -49,4 +49,16 @@ setPrefersReduced(true);
 assert.equal(prefersReduced(), true);
 setPrefersReduced(false);
 
+// Reduced motion: one step snaps to target, both spring and curve modes.
+setPrefersReduced(true);
+const s2 = new Spring(0);
+s2.target = 100;
+s2.step(1 / 60);
+assert.equal(s2.value, 100, "spring snaps under reduced motion");
+const t2 = new Tracked(10);
+t2.curveTowards(0, 340, 0);
+t2.step(1 / 60, 1);
+assert.equal(t2.value, 0, "curve snaps under reduced motion");
+setPrefersReduced(false);
+
 console.log("anim motion vocabulary OK");
