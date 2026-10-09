@@ -145,6 +145,14 @@ class AppState {
 
   stateOverride: BotStateName | null = null;
 
+  /** Bot reactions (media/timer/battery): lose to stateOverride and to a non-idle
+   *  focused agent in effectiveState; recomputed on every notify, never polled. */
+  reactionState: BotStateName | null = null;
+  /** One-shot emote request (break started, bluetooth connected) — the island
+   *  applies it to the engine and clears it on its next sync. */
+  reactionEmote: BotEmoteName | null = null;
+  private prevTimerRunning = false;
+
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };
   /** Cursor relative to the island's top-left corner. */
@@ -201,7 +209,26 @@ class AppState {
   }
 
   get effectiveState(): BotStateName {
-    return this.stateOverride ?? this.focusTask?.state ?? "idle";
+    if (this.stateOverride) return this.stateOverride;
+    const agent = this.focusTask?.state ?? "idle";
+    if (agent !== "idle") return agent; // agent-task states beat reactions
+    return this.reactionState ?? "idle";
+  }
+
+  /** Task 19 reactions: priority battery > focus timer > media (agent states and
+   *  stateOverride win above). Break runs idle (the engine has no happy state). */
+  updateReaction() {
+    const t = this.timer;
+    let r: BotStateName | null = null;
+    if (this.battery.level <= 20 && !this.battery.charging) r = "sleeping";
+    else if (t.running && t.mode === "focus") r = "thinking";
+    else if (t.running && t.mode === "break") r = "idle";
+    else if (this.media?.playing) r = "working";
+    this.reactionState = r;
+    if (t.running && !this.prevTimerRunning && t.mode === "break") {
+      this.reactionEmote = "happy";
+    }
+    this.prevTimerRunning = t.running;
   }
 
   get otherTasks(): AgentTask[] {
@@ -408,6 +435,11 @@ class AppState {
 }
 
 export const State = new AppState();
+
+// Bot reactions ride the existing notify path (bridge handlers, timer tick,
+// hooks all notify) — one subscriber, no polling interval.
+State.subscribe(() => State.updateReaction());
+State.updateReaction();
 
 // The pomodoro task list persists across restarts (brief: localStorage).
 try {

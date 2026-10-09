@@ -926,6 +926,10 @@ export class Island {
     }
 
     syncMiniBotStates(State.tasks);
+    if (State.reactionEmote) {
+      this.engine.triggerEmote(State.reactionEmote);
+      State.reactionEmote = null;
+    }
     this.engine.setState(State.effectiveState);
   }
 

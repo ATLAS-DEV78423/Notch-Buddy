@@ -312,6 +312,7 @@ export function registerBluetoothListeners() {
     if (!d) return;
     d.connected = payload.type === "connected";
     if (payload.battery >= 0) d.battery = payload.battery;
+    if (payload.type === "connected") State.reactionEmote = "surprised";
     State.notify();
   });
 }
