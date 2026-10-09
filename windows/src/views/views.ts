@@ -5,6 +5,7 @@
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
+import { Bridge } from "../core/bridge";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
@@ -601,10 +602,97 @@ function renderDashboardView(): HTMLElement {
   return h("div", { class: "dashboard-grid" },
     mediaWidget, statsWidget, timerWidget, weatherWidget, batteryWidget, bluetoothWidget);
 }
-function renderMediaView(): HTMLElement { return h("div", { class: "view-media" }, "Media"); }
+function buildMediaView(): ViewHost {
+  const empty = h("div", { class: "view-media-empty" }, "No media playing");
+  const art = h("img", { class: "media-album-art", alt: "" });
+  const track = h("div", { class: "media-track" });
+  const artist = h("div", { class: "media-artist" });
+  const fill = h("div", { class: "media-progress-fill" });
+  const bar = h("div", { class: "media-progress" }, fill);
+  const playBtn = h("button", { text: "▶", onclick: () => void Bridge.mediaPlayPause() });
+  const player = h("div", { class: "view-media" },
+    art,
+    h("div", { class: "media-info" },
+      track,
+      artist,
+      bar,
+      h("div", { class: "media-controls" },
+        h("button", { text: "⏮", onclick: () => void Bridge.mediaPrev() }),
+        playBtn,
+        h("button", { text: "⏭", onclick: () => void Bridge.mediaNext() }),
+      ),
+    ),
+  );
+  // Click anywhere on the bar → fraction of the width → media_seek.
+  bar.addEventListener("click", (ev) => {
+    const m = State.media;
+    if (!m || !m.duration) return;
+    const rect = bar.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+    void Bridge.mediaSeek(frac * m.duration);
+  });
+  const el = h("div", { class: "view" }, player, empty);
+  player.style.display = "none";
+  return {
+    el,
+    sync() {
+      const m = State.media;
+      empty.style.display = m ? "none" : "block";
+      player.style.display = m ? "flex" : "none";
+      if (!m) return;
+      // Art only rides track changes — never blank it on a 1 Hz tick.
+      if (m.albumArt && art.getAttribute("src") !== m.albumArt) art.src = m.albumArt;
+      art.style.display = art.getAttribute("src") ? "" : "none";
+      track.textContent = m.track;
+      artist.textContent = m.artist;
+      fill.style.width = `${m.duration > 0 ? Math.min(100, (m.position / m.duration) * 100) : 0}%`;
+      playBtn.textContent = m.playing ? "⏸" : "▶";
+    },
+  };
+}
 function renderControlCenterView(): HTMLElement { return h("div", { class: "view-control-center" }, "Control Center"); }
 function renderBluetoothView(): HTMLElement { return h("div", { class: "view-bluetooth" }, "Bluetooth"); }
-function renderStatsView(): HTMLElement { return h("div", { class: "view-stats" }, "Stats"); }
+function buildStatsView(): ViewHost {
+  const NET_FULL_SCALE = 10 * 1024 * 1024; // 10 MB/s fills the bar.
+  const fmtRate = (bps: number) => {
+    if (bps < 1024) return `${Math.round(bps)} B/s`;
+    if (bps < 1024 * 1024) return `${Math.round(bps / 1024)} KB/s`;
+    if (bps < 1024 * 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
+    return `${(bps / (1024 * 1024 * 1024)).toFixed(1)} GB/s`;
+  };
+  const row = (label: string) => {
+    const fill = h("div", { class: "stat-fill" });
+    const value = h("span", { class: "stat-value" });
+    return {
+      fill,
+      value,
+      el: h("div", { class: "stat-row" },
+        h("span", { class: "stat-label" }, label),
+        h("div", { class: "stat-bar" }, fill),
+        value),
+    };
+  };
+  const cpu = row("CPU");
+  const ram = row("RAM");
+  const rx = row("Net ↓");
+  const tx = row("Net ↑");
+  const pct = (n: number) => `${Math.max(0, Math.min(100, n))}%`;
+  return {
+    el: h("div", { class: "view" },
+      h("div", { class: "view-stats" }, cpu.el, ram.el, rx.el, tx.el)),
+    sync() {
+      const s = State.stats;
+      cpu.fill.style.width = pct(s.cpu);
+      cpu.value.textContent = `${s.cpu.toFixed(0)}%`;
+      ram.fill.style.width = pct(s.ram);
+      ram.value.textContent = `${s.ram.toFixed(0)}%`;
+      rx.fill.style.width = pct((s.netRx / NET_FULL_SCALE) * 100);
+      rx.value.textContent = fmtRate(s.netRx);
+      tx.fill.style.width = pct((s.netTx / NET_FULL_SCALE) * 100);
+      tx.value.textContent = fmtRate(s.netTx);
+    },
+  };
+}
 function renderPomodoroView(): HTMLElement { return h("div", { class: "view-pomodoro" }, "Pomodoro"); }
 function renderStopwatchView(): HTMLElement { return h("div", { class: "view-stopwatch" }, "Stopwatch"); }
 function renderWeatherView(): HTMLElement { return h("div", { class: "view-weather" }, "Weather"); }
@@ -613,6 +701,13 @@ function renderWeatherView(): HTMLElement { return h("div", { class: "view-weath
  *  inside a standard `.view` wrapper like every other view. */
 function stubView(render: () => HTMLElement): ViewHost {
   return { el: h("div", { class: "view" }, render()), sync() {} };
+}
+
+/** Same wrapper, but rebuilds on every sync — that runs once per State.notify()
+ *  while the view is active, so State-driven widgets actually redraw. */
+function liveView(render: () => HTMLElement): ViewHost {
+  const el = h("div", { class: "view" });
+  return { el, sync: () => void el.replaceChildren(render()) };
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -639,11 +734,11 @@ export function buildViews(
   map.set("mail", buildPlaceholder("Sending by email isn't in this version.", ""));
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
   map.set("result", buildPlaceholder("Result", ""));
-  map.set("dashboard", stubView(renderDashboardView));
-  map.set("media", stubView(renderMediaView));
+  map.set("dashboard", liveView(renderDashboardView));
+  map.set("media", buildMediaView());
   map.set("controlCenter", stubView(renderControlCenterView));
   map.set("bluetooth", stubView(renderBluetoothView));
-  map.set("stats", stubView(renderStatsView));
+  map.set("stats", buildStatsView());
   map.set("pomodoro", stubView(renderPomodoroView));
   map.set("stopwatch", stubView(renderStopwatchView));
   map.set("weather", stubView(renderWeatherView));

@@ -754,6 +754,29 @@ input[type="range"]::-webkit-slider-thumb {
 .widget-media { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #F5F6F8; }
 .widget-album-art { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; }
 
+/* ── Media player ───────────────────────────────────────────────────────── */
+
+.view-media { display: flex; gap: 12px; padding: 16px; align-items: center; }
+.view-media-empty { padding: 16px; font-size: 13px; color: var(--dim-2); }
+.media-album-art { width: 120px; height: 120px; border-radius: 12px; object-fit: cover; flex: none; background: var(--tab-on); }
+.media-info { flex: 1; min-width: 0; }
+.media-track { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-artist { font-size: 12px; color: var(--dim-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-progress { height: 4px; background: var(--tab-on); border-radius: 2px; margin: 8px 0; cursor: pointer; }
+.media-progress-fill { height: 100%; background: #3b9eff; border-radius: 2px; transition: width 0.3s; }
+.media-controls { display: flex; gap: 8px; }
+.media-controls button { background: var(--tab-on); border: none; border-radius: 8px; padding: 6px 12px; color: var(--ink); cursor: pointer; font: 600 13px var(--font); }
+.media-controls button:hover { background: #252830; }
+
+/* ── System stats ───────────────────────────────────────────────────────── */
+
+.view-stats { padding: 16px; }
+.stat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.stat-label { font-size: 11px; color: var(--dim-2); width: 44px; flex: none; }
+.stat-bar { flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; overflow: hidden; }
+.stat-fill { height: 100%; background: #3b9eff; border-radius: 3px; transition: width 0.3s; }
+.stat-value { font-size: 11px; color: var(--ink); width: 56px; flex: none; text-align: right; }
+
 /* ── Utility ────────────────────────────────────────────────────────────── */
 
 .grow {

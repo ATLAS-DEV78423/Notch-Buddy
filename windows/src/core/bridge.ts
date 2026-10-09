@@ -5,7 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import type { Settings } from "./state";
+import { State, type Settings } from "./state";
 
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -114,6 +114,13 @@ export const Bridge = {
 
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
+
+  // ── Media player ──────────────────────────────────────────────────────────
+  mediaPlayPause: () => call<void>("media_play_pause"),
+  mediaNext: () => call<void>("media_next"),
+  mediaPrev: () => call<void>("media_prev"),
+  /** `position` is seconds (f64 in Rust). */
+  mediaSeek: (position: number) => call<void>("media_seek", { position }),
 };
 
 export interface IntegrationUpdate {
@@ -189,4 +196,24 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
 export async function onEvent<T>(name: string, handler: (payload: T) => void) {
   if (!IS_TAURI) return () => {};
   return listen<T>(name, (e) => handler(e.payload));
+}
+
+export type MediaState = NonNullable<typeof State.media>;
+export type SystemStats = typeof State.stats;
+
+/**
+ * media-state / system-stats land in State, so every subscriber — the
+ * dashboard included — redraws through the usual State.notify() path.
+ * `media-changed` needs no handler: the next media-state carries the state.
+ */
+export function registerMediaStatsListeners() {
+  void onEvent<MediaState>("media-state", (payload) => {
+    // Rust only ships album art with track changes: keep the art we already have.
+    State.media = payload.albumArt ? payload : { ...payload, albumArt: State.media?.albumArt ?? "" };
+    State.notify();
+  });
+  void onEvent<SystemStats>("system-stats", (stats) => {
+    State.stats = stats;
+    State.notify();
+  });
 }
