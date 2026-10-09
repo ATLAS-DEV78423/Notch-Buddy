@@ -552,60 +552,83 @@ function buildPlaceholder(title: string, sub: string): ViewHost {
 
 // ── New view stubs (filled in by later tasks) ────────────────────────────────
 
-function renderDashboardView(): HTMLElement {
-  const media = State.media;
+function buildDashboardView(): ViewHost {
   const mediaWidget = h("div", { class: "widget", onclick: () => State.setView("media") },
-    h("div", { class: "widget-title" }, "Media"),
-    media
-      ? h("div", { class: "widget-media" },
-          h("img", { src: media.albumArt, class: "widget-album-art" }),
-          h("div", {}, media.track, h("br"), media.artist),
-        )
-      : h("div", { class: "widget-empty" }, "No media playing"),
-  );
+    h("div", { class: "widget-title" }, "Media"));
+  const mediaBody = h("div", { class: "widget-media" });
+  const mediaEmpty = h("div", { class: "widget-empty" }, "No media playing");
+  mediaWidget.append(mediaBody, mediaEmpty);
+  const art = h("img", { class: "widget-album-art" });
+  const mediaText = h("div");
+  mediaBody.append(art, mediaText);
 
-  const stats = State.stats;
   const statsWidget = h("div", { class: "widget", onclick: () => State.setView("stats") },
-    h("div", { class: "widget-title" }, "Stats"),
-    h("div", { class: "widget-value" },
-      `CPU ${Math.round(stats.cpu)}% · RAM ${Math.round(stats.ram)}%`),
-  );
+    h("div", { class: "widget-title" }, "Stats"));
+  const statsValue = h("div", { class: "widget-value" });
+  statsWidget.append(statsValue);
 
-  const timer = State.timer;
-  const timerLabel = timer.mode.charAt(0).toUpperCase() + timer.mode.slice(1);
-  const timerWidget = h("div", { class: "widget", onclick: () => State.setView(timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
-    h("div", { class: "widget-title" }, "Timer"),
-    h("div", { class: "widget-value" },
-      `${timerLabel} · ${pad2(timer.remaining / 60)}:${pad2(timer.remaining % 60)}`),
-  );
+  const timerWidget = h("div", { class: "widget", onclick: () => State.setView(State.timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
+    h("div", { class: "widget-title" }, "Timer"));
+  const timerValue = h("div", { class: "widget-value" });
+  timerWidget.append(timerValue);
 
-  const weather = State.weather;
   const weatherWidget = h("div", { class: "widget", onclick: () => State.setView("weather") },
-    h("div", { class: "widget-title" }, "Weather"),
-    weather.condition && weather.condition !== "Unavailable"
-      ? h("div", { class: "widget-value" }, `${weather.temp}° ${weather.condition}`)
-      : h("div", { class: "widget-empty" },
-          weather.condition ? "Weather unavailable" : "No weather data"),
-  );
+    h("div", { class: "widget-title" }, "Weather"));
+  const weatherValue = h("div", { class: "widget-value" });
+  const weatherEmpty = h("div", { class: "widget-empty" });
+  weatherWidget.append(weatherValue, weatherEmpty);
 
-  const battery = State.battery;
   const batteryWidget = h("div", { class: "widget", onclick: () => State.setView("controlCenter") },
-    h("div", { class: "widget-title" }, "Battery"),
-    h("div", { class: "widget-value" },
-      `${battery.level}%${battery.charging ? " · Charging" : ""}`),
-  );
+    h("div", { class: "widget-title" }, "Battery"));
+  const batteryValue = h("div", { class: "widget-value" });
+  batteryWidget.append(batteryValue);
 
-  const devices = State.bluetooth.devices;
-  const bluetoothWidget = h("div", { class: "widget", onclick: () => State.setView("bluetooth") },
-    h("div", { class: "widget-title" }, "Bluetooth"),
-    devices.length
-      ? h("div", { class: "widget-value" },
-          `${devices.filter((d) => d.connected).length}/${devices.length} connected`)
-      : h("div", { class: "widget-empty" }, "No devices"),
-  );
+  const btWidget = h("div", { class: "widget", onclick: () => State.setView("bluetooth") },
+    h("div", { class: "widget-title" }, "Bluetooth"));
+  const btValue = h("div", { class: "widget-value" });
+  const btEmpty = h("div", { class: "widget-empty" }, "No devices");
+  btWidget.append(btValue, btEmpty);
 
-  return h("div", { class: "dashboard-grid" },
-    mediaWidget, statsWidget, timerWidget, weatherWidget, batteryWidget, bluetoothWidget);
+  const el = h("div", { class: "view" },
+    h("div", { class: "dashboard-grid" },
+      mediaWidget, statsWidget, timerWidget, weatherWidget, batteryWidget, btWidget));
+
+  let mediaKey = "";
+  return {
+    el,
+    sync() {
+      const m = State.media;
+      mediaBody.style.display = m ? "" : "none";
+      mediaEmpty.style.display = m ? "none" : "";
+      if (m) {
+        const key = `${m.track}|${m.artist}|${m.albumArt}`;
+        if (key !== mediaKey) {
+          mediaKey = key;
+          art.src = m.albumArt;
+          art.style.display = m.albumArt ? "" : "none";
+          mediaText.replaceChildren(m.track, h("br"), m.artist);
+        }
+      }
+      const s = State.stats;
+      statsValue.textContent = `CPU ${Math.round(s.cpu)}% · RAM ${Math.round(s.ram)}%`;
+      const t = State.timer;
+      const label = t.mode.charAt(0).toUpperCase() + t.mode.slice(1);
+      timerValue.textContent = `${label} · ${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`;
+      const w = State.weather;
+      const hasW = w.condition && w.condition !== "Unavailable";
+      weatherValue.style.display = hasW ? "" : "none";
+      weatherEmpty.style.display = hasW ? "none" : "";
+      if (hasW) weatherValue.textContent = `${w.temp}° ${w.condition}`;
+      else weatherEmpty.textContent = w.condition ? "Weather unavailable" : "No weather data";
+      const b = State.battery;
+      batteryValue.textContent = `${b.level}%${b.charging ? " · Charging" : ""}`;
+      const devices = State.bluetooth.devices;
+      const any = devices.length > 0;
+      btValue.style.display = any ? "" : "none";
+      btEmpty.style.display = any ? "none" : "";
+      if (any) btValue.textContent = `${devices.filter((d) => d.connected).length}/${devices.length} connected`;
+    },
+  };
 }
 /** Bar/fill width as a clamped 0-100 % style value. */
 const pct = (n: number) => `${Math.max(0, Math.min(100, n))}%`;
@@ -1039,61 +1062,69 @@ function buildPomodoroView(): ViewHost {
 
 // ── Stopwatch ────────────────────────────────────────────────────────────────
 
-function renderStopwatchView(): HTMLElement {
-  const t = State.timer;
-  if (t.mode !== "stopwatch") State.timerSetMode("stopwatch");
-  return h(
-    "div",
-    { class: "view-stopwatch" },
-    h(
-      "div",
-      { class: "timer-display" },
-      `${pad2(t.remaining / 3600)}:${pad2((t.remaining % 3600) / 60)}:${pad2(t.remaining % 60)}`,
-    ),
-    h(
-      "div",
-      { class: "timer-controls" },
-      btn(t.running ? "Pause" : "Start", "primary", () => State.timerToggle()),
-      btn("Reset", "secondary", () => State.timerReset()),
-    ),
-  );
+function buildStopwatchView(): ViewHost {
+  const display = h("div", { class: "timer-display" });
+  const startBtn = btn("Start", "primary", () => State.timerToggle());
+  const startLabel = startBtn.querySelector("span") as HTMLElement;
+  const el = h("div", { class: "view" },
+    h("div", { class: "view-stopwatch" },
+      display,
+      h("div", { class: "timer-controls" },
+        startBtn,
+        btn("Reset", "secondary", () => State.timerReset()))));
+  return {
+    el,
+    sync() {
+      const t = State.timer;
+      if (t.mode !== "stopwatch") State.timerSetMode("stopwatch");
+      display.textContent = `${pad2(t.remaining / 3600)}:${pad2((t.remaining % 3600) / 60)}:${pad2(t.remaining % 60)}`;
+      startLabel.textContent = t.running ? "Pause" : "Start";
+    },
+  };
 }
-function renderWeatherView(): HTMLElement {
-  const w = State.weather;
-  if (!w.condition) {
-    return h("div", { class: "view-weather weather-empty" }, "Loading…");
-  }
-  if (w.condition === "Unavailable") {
-    return h("div", { class: "view-weather weather-empty" }, "Weather unavailable");
-  }
-  return h(
-    "div",
-    { class: "view-weather" },
-    h("div", { class: "weather-temp" }, `${w.temp}°`),
-    h("div", { class: "weather-condition" }, w.condition),
-    h(
-      "div",
-      { class: "weather-details" },
-      `Humidity: ${w.humidity}%`,
-      h("br"),
-      `Wind: ${w.wind} km/h`,
-    ),
-  );
+function buildWeatherView(): ViewHost {
+  const temp = h("div", { class: "weather-temp" });
+  const cond = h("div", { class: "weather-condition" });
+  const details = h("div", { class: "weather-details" });
+  const full = h("div", { class: "view-weather" }, temp, cond, details);
+  const empty = h("div", { class: "view-weather weather-empty" }, "Loading…");
+  const el = h("div", { class: "view" }, full, empty);
+  full.style.display = "none";
+  return {
+    el,
+    sync() {
+      const w = State.weather;
+      const has = w.condition && w.condition !== "Unavailable";
+      full.style.display = has ? "" : "none";
+      empty.style.display = has ? "none" : "";
+      if (has) {
+        temp.textContent = `${w.temp}°`;
+        cond.textContent = w.condition;
+        details.replaceChildren(`Humidity: ${w.humidity}%`, h("br"), `Wind: ${w.wind} km/h`);
+      } else {
+        empty.textContent = w.condition ? "Weather unavailable" : "Loading…";
+      }
+    },
+  };
 }
 
 /** In-island banner strip — clipboard URLs, battery notices. One banner at a
  *  time; State owns the TTL, this view owns Open / dismiss. */
 export function buildBanners(): ViewHost {
   const el = h("div", { class: "banners" });
+  let key = "";
   return {
     el,
     sync() {
       const b = State.banner;
       if (!b) {
         el.style.display = "none";
-        el.replaceChildren();
+        key = "";
         return;
       }
+      const next = `${b.url ?? ""}|${b.text}`;
+      if (next === key) return; // already built — no churn on every notify
+      key = next;
       el.style.display = "";
       const text = b.url && b.url.length > 48 ? `${b.url.slice(0, 47)}…` : b.text;
       el.replaceChildren(
@@ -1127,22 +1158,24 @@ export function buildBanners(): ViewHost {
  *  and the media/battery events land without any extra plumbing. */
 export function buildCompactStatus(): ViewHost {
   const el = h("div", { id: "compact-status" });
+  const timer = h("span", { class: "cs-timer" });
+  const media = h("span", { class: "cs-media" });
+  const battery = h("span", { class: "cs-battery" });
+  el.append(timer, media, battery);
   return {
     el,
     sync() {
       const on = State.mode === "compact";
       el.style.opacity = on ? "1" : "0";
       if (!on) return;
-      const parts: HTMLElement[] = [];
       const t = State.timer;
-      if (t.running) {
-        parts.push(h("span", { class: "cs-timer" }, `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`));
-      }
+      timer.style.display = t.running ? "" : "none";
+      timer.textContent = `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`;
       const m = State.media;
-      if (m?.playing) parts.push(h("span", { class: "cs-media" }, `♪ ${m.track}`));
+      media.style.display = m?.playing ? "" : "none";
+      media.textContent = m?.playing ? `♪ ${m.track}` : "";
       const b = State.battery;
-      parts.push(h("span", { class: "cs-battery" }, `${b.charging ? "⚡" : ""}${b.level}%`));
-      el.replaceChildren(...parts);
+      battery.textContent = `${b.charging ? "⚡" : ""}${b.level}%`;
     },
   };
 }
@@ -1178,13 +1211,13 @@ export function buildViews(
   map.set("mail", buildPlaceholder("Sending by email isn't in this version.", ""));
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
   map.set("result", buildPlaceholder("Result", ""));
-  map.set("dashboard", liveView(renderDashboardView));
+  map.set("dashboard", buildDashboardView());
   map.set("media", buildMediaView());
   map.set("controlCenter", buildControlCenter());
   map.set("bluetooth", buildBluetoothView());
   map.set("stats", buildStatsView());
   map.set("pomodoro", buildPomodoroView());
-  map.set("stopwatch", liveView(renderStopwatchView));
-  map.set("weather", liveView(renderWeatherView));
+  map.set("stopwatch", buildStopwatchView());
+  map.set("weather", buildWeatherView());
   return map;
 }
