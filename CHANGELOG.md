@@ -18,6 +18,34 @@
   by Louis Raillé under the Coucou name. This fork did not make them and does not rewrite
   them.
 
+## 0.2.0 — October 8, 2026
+
+- **Notch-Buddy for Windows 0.2.0** — the island becomes a full desktop companion
+  (`windows-v0.2.0`). Download it from
+  [Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.2.0).
+- **The island is now a set of tab groups** — Home, Agents, Media, System, Tools — with a
+  dashboard of live widgets as the default view (system stats, battery, weather, timers).
+  Everything that was already there (sessions, approvals, chat, file drop, integrations)
+  is unchanged, one tab over.
+- **Media player** — see what's playing from any app that supports Windows media controls,
+  with play/pause, next, previous and seek; album art when the player provides it
+- **Control center** — volume, brightness, night light, Do Not Disturb and a memory-boost
+  button in the island
+- **System stats** — CPU, memory and network usage, live
+- **Bluetooth** — list nearby devices and connect or disconnect them from the island
+- **Pomodoro and stopwatch** — the 25/5 work–rest timer with a notification when a block
+  ends, and a stopwatch
+- **Weather** — current conditions from wttr.in (no key, no account), fetched about every
+  30 minutes and only while the island is open
+- **Battery alerts** — a banner when the battery is low or full; level and charging state
+  on the dashboard and in compact mode
+- **Clipboard** — copy a URL and a banner offers to open it
+- **Background effects** — nine animated island backgrounds and an accent colour, pickable
+  in Settings; Pip also reacts to what's going on (agent activity, battery, timers, media)
+- **Compact mode** shows a mini status strip — media, timer, battery — while the island is
+  collapsed
+- Nothing polls while the island is hidden: 0 % CPU at rest (measured 0.00 %)
+
 ## 0.1.2 — October 8, 2026
 
 - **Notch-Buddy for Windows 0.1.2** — the fork's first published Windows build

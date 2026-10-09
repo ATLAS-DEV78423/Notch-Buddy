@@ -21,8 +21,8 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 ## Install
 
-Grab `Coucou-Windows-0.1.2-setup.exe` (or the `.msi`) from
-[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.1.2)
+Grab `Coucou-Windows-0.2.0-setup.exe` (or the `.msi`) from
+[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.2.0)
 and run it — current-user install, no admin prompt. The installer is not
 code-signed yet, so SmartScreen warns: click **More info → Run anyway**.
 Microsoft Defender may also flag it (`Trojan:Win32/Wacatac.H!ml`, a known false
@@ -51,6 +51,28 @@ Everything else happens on its own: a Claude Code permission request opens the
 island with **Deny / Allow**, a finished session shows what it did, and
 your integrations sit in the coloured pills next to Pip.
 
+## New in 0.2.0
+
+The island is now a set of tab groups — **Home, Agents, Media, System, Tools** — with a
+dashboard of live widgets as the default view. Sessions, approvals, chat and file drop
+are unchanged, one tab over.
+
+| Where | What |
+|---|---|
+| Media tab | what's playing (any app with Windows media controls), play/pause/next/previous/seek, album art |
+| System tab | CPU, memory and network live; volume, brightness, night light, Do Not Disturb and a memory boost; Bluetooth devices you can connect |
+| Tools tab | pomodoro (25/5, with a notification when a block ends) and a stopwatch |
+| Dashboard (Home) | system stats, battery, weather and your running timers at a glance |
+| Anywhere | copy a URL and a banner offers to open it; a banner warns when the battery is low or full |
+| Settings… | nine animated island backgrounds and an accent colour |
+| Compact mode | a mini status strip — media, timer, battery — while the island is collapsed |
+
+Weather comes from wttr.in (no key, no account), fetched about every 30 minutes and only
+while the island is open. Pip reacts to what's going on: agent activity, battery, timers
+and media all give him something to say.
+
+Everything polls only while the island is visible: hidden, the app sits at 0 % CPU.
+
 ## Claude Code
 
 <img src="screenshots/settings.png" width="562" alt="The settings window">
@@ -75,7 +97,8 @@ Credential Manager**, never on disk and never in the interface — the island ca
 only ask whether a key exists. Same for every integration key.
 
 No telemetry. The only network requests Notch-Buddy makes are to the services you
-configure yourself.
+configure yourself — plus wttr.in for the optional weather widget (no key, no account,
+about every 30 minutes, only while the island is open).
 
 ## Build it yourself
 
