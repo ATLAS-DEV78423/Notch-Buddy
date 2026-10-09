@@ -48,6 +48,7 @@ body {
   border-radius: 0 0 14px 14px;
   overflow: visible;
   will-change: width, height, transform;
+  contain: layout style paint;
 }
 
 #island-clip {
@@ -55,6 +56,7 @@ body {
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+  contain: layout paint;
 }
 
 #bot-canvas,
@@ -298,6 +300,7 @@ body {
   transform: scale(0.97);
   pointer-events: none;
   transition: opacity 0.16s ease-in;
+  contain: layout style;
 }
 
 .view.on {
@@ -909,7 +912,7 @@ input[type="range"]::-webkit-slider-thumb {
 .task-row { display: flex; gap: 6px; width: 100%; }
 .task-input { flex: 1 1 auto; min-width: 0; background: var(--tab-on); border: 0; border-radius: 8px; padding: 6px 8px; color: var(--ink); font: 400 12px var(--font); outline: none; }
 .task-input::placeholder { color: var(--dim-2); }
-.task-list { width: 100%; max-height: 64px; overflow-y: auto; text-align: left; }
+.task-list { width: 100%; max-height: 64px; overflow-y: auto; text-align: left; content-visibility: auto; }
 .task { display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 12px; color: var(--ink); }
 .task span { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task.done span { text-decoration: line-through; color: var(--dim-2); }
@@ -977,6 +980,7 @@ input[type="range"]::-webkit-slider-thumb {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  content-visibility: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1303,6 +1307,7 @@ input[type="range"]::-webkit-slider-thumb {
   flex-direction: column;
   gap: 3px;
   padding-top: 5px;
+  content-visibility: auto;
 }
 
 .int-rows.tight {
@@ -1541,6 +1546,7 @@ input[type="range"]::-webkit-slider-thumb {
   margin-top: 8px;
   max-height: 88px;
   overflow: auto;
+  content-visibility: auto;
   white-space: pre-wrap;
   user-select: text;
 }

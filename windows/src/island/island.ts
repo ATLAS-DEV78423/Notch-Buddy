@@ -19,6 +19,7 @@ import { USC, UploadSeq } from "../upload/sequence";
 import { backgroundEffect, backgroundColors, drawBackground } from "../views/backgroundEffects";
 import { buildBanners, buildCompactStatus, buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h } from "../views/dom";
+import { Ticker } from "../views/ticker";
 import { IslandStateMachine } from "./fsm";
 
 const BOT_OVERHANG = 40;
@@ -748,7 +749,7 @@ export class Island {
       : settling ||
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
         greetingActive || this.engine.busy || UploadSeq.isActive ||
-        backgroundEffect() !== "off";
+        Ticker.animating || backgroundEffect() !== "off";
 
     if (busy) {
       requestAnimationFrame(this.frame);
@@ -770,7 +771,8 @@ export class Island {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const bw = Math.round(w * dpr);
     const bh = Math.round(h * dpr);
-    if (this.bgCanvas.width !== bw || this.bgCanvas.height !== bh) {
+    const settling = this.width.animating || this.height.animating;
+    if (!settling && (this.bgCanvas.width !== bw || this.bgCanvas.height !== bh)) {
       this.bgCanvas.width = bw;
       this.bgCanvas.height = bh;
       this.bgCanvas.style.width = `${w}px`;
@@ -781,6 +783,8 @@ export class Island {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawBackground(ctx, fx, w, h, backgroundColors());
   }
+
+  private glowKey = "";
 
   private updateBotTargets() {
     const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
@@ -796,15 +800,22 @@ export class Island {
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive) {
       const d = p.diameter;
       const color = botGlowColor(State.effectiveState);
-      this.botGlow.style.display = "block";
-      this.botGlow.style.width = `${d * 2.2}px`;
-      this.botGlow.style.height = `${d * 2.2}px`;
+      // The gradient string is expensive to rebuild — only touch the DOM when
+      // the size or colour actually changed. Position still follows the spring.
+      const key = `${Math.round(d)}|${color}`;
+      if (key !== this.glowKey) {
+        this.glowKey = key;
+        this.botGlow.style.display = "block";
+        this.botGlow.style.width = `${d * 2.2}px`;
+        this.botGlow.style.height = `${d * 2.2}px`;
+        this.botGlow.style.background = `radial-gradient(circle, ${color} 0%, transparent 62%)`;
+      }
       this.botGlow.style.left = `${this.botCx.value - d * 1.1}px`;
       this.botGlow.style.top = `${this.botCy.value - d * 1.1}px`;
-      this.botGlow.style.background = `radial-gradient(circle, ${color} 0%, transparent 62%)`;
       this.botGlow.style.opacity = String(botGlowOpacity(State.effectiveState));
     } else {
       this.botGlow.style.display = "none";
+      this.glowKey = "";
     }
   }
 
@@ -813,7 +824,8 @@ export class Island {
     const w = Math.max(1, Math.round(size));
     const hCss = w + BOT_OVERHANG;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (this.canvasPx !== w) {
+    const settling = !this.botSize.settled;
+    if (!settling && this.canvasPx !== w) {
       this.canvasPx = w;
       this.botCanvas.width = Math.round(w * dpr);
       this.botCanvas.height = Math.round(hCss * dpr);

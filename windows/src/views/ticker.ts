@@ -71,6 +71,9 @@ function place(row: Row, y: number, phase: number, opacity: number) {
 }
 
 export class Ticker {
+  /** The island's one ticker — the frame loop's busy gate reads it statically. */
+  static current: Ticker | null = null;
+
   readonly el: HTMLElement;
   private a = makeRow(); // completed
   private b = makeRow(); // current
@@ -81,7 +84,12 @@ export class Ticker {
 
   constructor() {
     this.el = h("div", { class: "ticker" }, this.a.el, this.b.el, this.c.el);
+    Ticker.current = this;
     this.rest();
+  }
+
+  static get animating(): boolean {
+    return Ticker.current?.animating ?? false;
   }
 
   /** The state between transitions: completed on top, current below. */
