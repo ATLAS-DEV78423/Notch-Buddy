@@ -7,6 +7,22 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { State, type MediaState, type Settings, type SystemStats } from "./state";
 
+/** `weather-update` payload — field names match `State.weather`. */
+export interface WeatherData {
+  temp: number;
+  condition: string;
+  humidity: number;
+  wind: number;
+}
+
+/** `battery-status` payload — field names match `State.battery`. */
+export interface BatteryStatus {
+  level: number;
+  charging: boolean;
+  /** Seconds; 0 when Windows has no estimate. */
+  timeRemaining: number;
+}
+
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -297,5 +313,41 @@ export function registerBluetoothListeners() {
     d.connected = payload.type === "connected";
     if (payload.battery >= 0) d.battery = payload.battery;
     State.notify();
+  });
+}
+
+/**
+ * weather-update / battery-status / clipboard-url land in State and the banner.
+ * Battery alerts fire once per threshold crossing (low below 20 %, not
+ * charging; plug/unplug edges), never on every 30 s poll. The clipboard banner
+ * carries a ~6 s TTL — the backend also emits on launch when a URL is already
+ * in the clipboard, and the TTL covers that case too.
+ */
+export function registerWeatherBatteryClipboardListeners() {
+  void onEvent<WeatherData>("weather-update", (payload) => {
+    State.weather = payload;
+    State.notify();
+  });
+
+  let batterySeen = false;
+  void onEvent<BatteryStatus>("battery-status", (payload) => {
+    const prev = State.battery;
+    State.battery = payload;
+    if (batterySeen) {
+      const lowNow = payload.level < 20 && !payload.charging;
+      const lowBefore = prev.level < 20 && !prev.charging;
+      if (lowNow && !lowBefore) {
+        State.showBanner(`Battery low: ${payload.level}%`);
+      } else if (payload.charging !== prev.charging) {
+        State.showBanner(payload.charging ? "Charger connected" : "Charger disconnected");
+      }
+    }
+    batterySeen = true;
+    State.notify();
+  });
+
+  void onEvent<{ url: string }>("clipboard-url", ({ url }) => {
+    State.clipboard.lastUrl = url;
+    State.showBanner(url);
   });
 }

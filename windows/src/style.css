@@ -754,6 +754,58 @@ input[type="range"]::-webkit-slider-thumb {
 .widget-media { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #F5F6F8; }
 .widget-album-art { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; }
 
+/* ── Weather ───────────────────────────────────────────────────────────── */
+
+.view-weather { padding: 16px; text-align: center; }
+.weather-temp { font-size: 36px; font-weight: 600; color: var(--ink); }
+.weather-condition { font-size: 13px; color: var(--dim-2); margin: 4px 0 10px; }
+.weather-details { font-size: 12px; color: var(--dim-2); line-height: 1.6; }
+.weather-empty { font-size: 13px; color: var(--dim-2); }
+
+/* ── In-island banners (clipboard URL, battery notices) ─────────────────── */
+
+.banners {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: auto;
+}
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #252830;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 6px 8px 6px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font: 500 12px var(--font);
+  color: var(--ink);
+  max-width: 520px;
+}
+.banner-text { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.banner-open {
+  background: #3b9eff;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: #fff;
+  cursor: pointer;
+  font: 600 11px var(--font);
+}
+.banner-close {
+  background: transparent;
+  border: 0;
+  color: var(--dim-2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.banner-close:hover { color: var(--ink); }
+
 /* ── Media player ───────────────────────────────────────────────────────── */
 
 .view-media { display: flex; gap: 12px; padding: 16px; align-items: center; }

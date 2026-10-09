@@ -179,8 +179,11 @@ class AppState {
   clipboard: { lastUrl: string } = { lastUrl: "" };
   timer: { mode: "focus" | "break" | "stopwatch"; running: boolean; remaining: number; tasks: Array<{ text: string; done: boolean }> } = { mode: "focus", running: false, remaining: FOCUS_SECONDS, tasks: [] };
   weather: { temp: number; condition: string; humidity: number; wind: number } = { temp: 0, condition: "", humidity: 0, wind: 0 };
+  /** In-island banner (clipboard URL, battery notice). One at a time, fixed TTL. */
+  banner: { text: string; url: string | null } | null = null;
   viewGroup: ViewGroup = "agents";
 
+  private bannerTimer: number | null = null;
   private listeners = new Set<Listener>();
 
   subscribe(fn: Listener): () => void {
@@ -302,6 +305,25 @@ class AppState {
 
   setViewGroup(group: ViewGroup) {
     this.viewGroup = group;
+    this.notify();
+  }
+
+  /** Shows an in-island banner for a fixed TTL; a new banner replaces the running one. */
+  showBanner(text: string, url: string | null = null) {
+    this.banner = { text, url };
+    if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(() => {
+      this.banner = null;
+      this.bannerTimer = null;
+      this.notify();
+    }, 6000);
+    this.notify();
+  }
+
+  dismissBanner() {
+    if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = null;
+    this.banner = null;
     this.notify();
   }
 

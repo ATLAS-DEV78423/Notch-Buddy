@@ -1052,15 +1052,68 @@ function renderStopwatchView(): HTMLElement {
     ),
   );
 }
-function renderWeatherView(): HTMLElement { return h("div", { class: "view-weather" }, "Weather"); }
-
-/** The dispatcher toggles `.on` on the host's root, so the stub's own div sits
- *  inside a standard `.view` wrapper like every other view. */
-function stubView(render: () => HTMLElement): ViewHost {
-  return { el: h("div", { class: "view" }, render()), sync() {} };
+function renderWeatherView(): HTMLElement {
+  const w = State.weather;
+  if (!w.condition) {
+    return h("div", { class: "view-weather weather-empty" }, "Loading…");
+  }
+  return h(
+    "div",
+    { class: "view-weather" },
+    h("div", { class: "weather-temp" }, `${w.temp}°`),
+    h("div", { class: "weather-condition" }, w.condition),
+    h(
+      "div",
+      { class: "weather-details" },
+      `Humidity: ${w.humidity}%`,
+      h("br"),
+      `Wind: ${w.wind} km/h`,
+    ),
+  );
 }
 
-/** Same wrapper, but rebuilds on every sync — that runs once per State.notify()
+/** In-island banner strip — clipboard URLs, battery notices. One banner at a
+ *  time; State owns the TTL, this view owns Open / dismiss. */
+export function buildBanners(): ViewHost {
+  const el = h("div", { class: "banners" });
+  return {
+    el,
+    sync() {
+      const b = State.banner;
+      if (!b) {
+        el.style.display = "none";
+        el.replaceChildren();
+        return;
+      }
+      el.style.display = "";
+      const text = b.url && b.url.length > 48 ? `${b.url.slice(0, 47)}…` : b.text;
+      el.replaceChildren(
+        h(
+          "div",
+          { class: "banner" },
+          h("span", { class: "banner-text", text }),
+          b.url
+            ? h("button", {
+                class: "banner-open",
+                text: "Open",
+                onclick: () => {
+                  void Bridge.openUrl(b.url!);
+                  State.dismissBanner();
+                },
+              })
+            : null,
+          h("button", {
+            class: "banner-close",
+            text: "×",
+            onclick: () => State.dismissBanner(),
+          }),
+        ),
+      );
+    },
+  };
+}
+
+/** Rebuilds on every sync — that runs once per State.notify()
  *  while the view is active, so State-driven widgets actually redraw. */
 function liveView(render: () => HTMLElement): ViewHost {
   const el = h("div", { class: "view" });
@@ -1098,6 +1151,6 @@ export function buildViews(
   map.set("stats", buildStatsView());
   map.set("pomodoro", buildPomodoroView());
   map.set("stopwatch", liveView(renderStopwatchView));
-  map.set("weather", stubView(renderWeatherView));
+  map.set("weather", liveView(renderWeatherView));
   return map;
 }

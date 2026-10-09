@@ -1,6 +1,7 @@
 // Coucou for Windows — app wiring and the commands the island calls.
 
 mod agents;
+mod battery;
 mod bluetooth;
 mod claude;
 mod clipboard;
@@ -17,6 +18,7 @@ mod settings;
 mod system_control;
 mod system_stats;
 mod tray;
+mod weather;
 
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -490,6 +492,8 @@ pub fn run() {
             media::setup_media(&handle, gate.clone());
             system_stats::setup_system_stats(&handle, gate.clone());
             clipboard::setup_clipboard(&handle, gate.clone());
+            weather::setup_weather(&handle, gate.clone());
+            battery::setup_battery(&handle, gate.clone());
             Ok(())
         })
         .run(tauri::generate_context!())

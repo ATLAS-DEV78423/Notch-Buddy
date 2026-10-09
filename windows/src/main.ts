@@ -8,6 +8,7 @@ import {
   registerBluetoothListeners,
   registerControlCenterListeners,
   registerMediaStatsListeners,
+  registerWeatherBatteryClipboardListeners,
 } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { startTimerTick, State, type Settings } from "./core/state";
@@ -73,6 +74,7 @@ async function main() {
   registerMediaStatsListeners();
   registerControlCenterListeners();
   registerBluetoothListeners();
+  registerWeatherBatteryClipboardListeners();
   startTimerTick();
 
   island.launch();
