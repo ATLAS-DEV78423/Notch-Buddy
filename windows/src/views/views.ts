@@ -630,8 +630,6 @@ function buildDashboardView(): ViewHost {
     },
   };
 }
-/** Bar/fill width as a clamped 0-100 % style value. */
-const pct = (n: number) => `${Math.max(0, Math.min(100, n))}%`;
 
 function buildMediaView(): ViewHost {
   const empty = h("div", { class: "view-media-empty" }, "No media playing");
@@ -676,7 +674,7 @@ function buildMediaView(): ViewHost {
       art.style.display = m.albumArt ? "" : "none";
       track.textContent = m.track;
       artist.textContent = m.artist;
-      fill.style.width = pct(m.duration > 0 ? (m.position / m.duration) * 100 : 0);
+      fill.style.transform = `scaleX(${clamp01(m.duration > 0 ? m.position / m.duration : 0)})`;
       playBtn.textContent = m.playing ? "⏸" : "▶";
     },
   };
@@ -692,17 +690,18 @@ function buildControlCenter(): ViewHost {
     const fill = h("div", { class: "cc-slider-fill" });
     const track = h("div", { class: "cc-slider" }, fill);
     let dragging = false;
+    let trackRect: DOMRect | null = null;
     let timer = 0;
     let value = 0;
 
     const at = (clientX: number) => {
-      const r = track.getBoundingClientRect();
+      const r = trackRect ?? track.getBoundingClientRect();
       return r.width > 0 ? clamp01((clientX - r.left) / r.width) : value;
     };
     const apply = (v: number, flush = false) => {
       value = clamp01(v);
       write(value);
-      fill.style.width = pct(value * 100);
+      fill.style.transform = `scaleX(${value})`;
       window.clearTimeout(timer);
       if (flush) commit(value);
       else timer = window.setTimeout(() => commit(value), 150);
@@ -710,6 +709,8 @@ function buildControlCenter(): ViewHost {
 
     track.addEventListener("pointerdown", (e) => {
       dragging = true;
+      trackRect = track.getBoundingClientRect();
+      track.classList.add("dragging");
       track.setPointerCapture(e.pointerId);
       apply(at(e.clientX));
     });
@@ -719,6 +720,8 @@ function buildControlCenter(): ViewHost {
     const end = () => {
       if (!dragging) return;
       dragging = false;
+      trackRect = null;
+      track.classList.remove("dragging");
       apply(value, true);
     };
     track.addEventListener("pointerup", end);
@@ -737,7 +740,7 @@ function buildControlCenter(): ViewHost {
       sync(v: number) {
         if (dragging) return; // the drag owns the fill until pointerup
         value = clamp01(v);
-        fill.style.width = pct(value * 100);
+        fill.style.transform = `scaleX(${value})`;
       },
     };
   };
@@ -952,13 +955,13 @@ function buildStatsView(): ViewHost {
       h("div", { class: "view-stats" }, cpu.el, ram.el, rx.el, tx.el)),
     sync() {
       const s = State.stats;
-      cpu.fill.style.width = pct(s.cpu);
+      cpu.fill.style.transform = `scaleX(${clamp01(s.cpu / 100)})`;
       cpu.value.textContent = `${s.cpu.toFixed(0)}%`;
-      ram.fill.style.width = pct(s.ram);
+      ram.fill.style.transform = `scaleX(${clamp01(s.ram / 100)})`;
       ram.value.textContent = `${s.ram.toFixed(0)}%`;
-      rx.fill.style.width = pct((s.netRx / NET_FULL_SCALE) * 100);
+      rx.fill.style.transform = `scaleX(${clamp01(s.netRx / NET_FULL_SCALE)})`;
       rx.value.textContent = fmtRate(s.netRx);
-      tx.fill.style.width = pct((s.netTx / NET_FULL_SCALE) * 100);
+      tx.fill.style.transform = `scaleX(${clamp01(s.netTx / NET_FULL_SCALE)})`;
       tx.value.textContent = fmtRate(s.netTx);
     },
   };
