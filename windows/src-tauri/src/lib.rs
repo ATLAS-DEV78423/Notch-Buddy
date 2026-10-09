@@ -12,6 +12,7 @@ mod pipe;
 mod platform;
 mod secrets;
 mod settings;
+mod system_control;
 mod system_stats;
 mod tray;
 
@@ -448,6 +449,14 @@ pub fn run() {
             media::media_next,
             media::media_prev,
             media::media_seek,
+            system_control::get_volume,
+            system_control::set_volume,
+            system_control::toggle_mute,
+            system_control::get_brightness,
+            system_control::set_brightness,
+            system_control::toggle_night_light,
+            system_control::toggle_dnd,
+            system_control::memory_boost,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
