@@ -12,6 +12,7 @@ mod pipe;
 mod platform;
 mod secrets;
 mod settings;
+mod system_stats;
 mod tray;
 
 use std::process::Command;
@@ -473,6 +474,7 @@ pub fn run() {
             pipe::start(handle.clone());
             integrations::start(handle.clone());
             media::setup_media(&handle, gate.clone());
+            system_stats::setup_system_stats(&handle, gate.clone());
             Ok(())
         })
         .run(tauri::generate_context!())
