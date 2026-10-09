@@ -790,6 +790,52 @@ input[type="range"]::-webkit-slider-thumb {
 .cc-toggle.on { background: rgba(59, 158, 255, 0.18); color: #3b9eff; }
 .cc-note { font-size: 11px; color: var(--dim-2); min-width: 72px; }
 
+/* ── Bluetooth ────────────────────────────────────────────────────────────── */
+
+.view-bluetooth { padding: 16px; }
+.bt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bt-count { font-size: 11px; color: var(--dim-2); }
+.bt-refresh { background: var(--tab-on); border: 0; border-radius: 8px; padding: 4px 10px; color: var(--ink); cursor: pointer; font: 600 11px var(--font); }
+.bt-refresh:hover { background: #252830; }
+.bt-error { font-size: 11px; color: #F4505E; margin-bottom: 6px; }
+.bt-empty { font-size: 12px; color: var(--dim-2); padding: 8px 0; }
+.bt-device { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--tab-on); border-radius: 8px; margin-bottom: 6px; }
+.bt-icon { flex: none; width: 18px; text-align: center; font-size: 13px; line-height: 1; }
+.bt-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt-battery { flex: none; font-size: 11px; color: var(--dim-2); font-variant-numeric: tabular-nums; }
+.bt-btn { flex: none; background: #252830; border: 0; border-radius: 999px; padding: 4px 10px; color: var(--ink); cursor: pointer; font: 600 11px var(--font); }
+.bt-btn:disabled { opacity: 0.45; cursor: default; }
+.bt-btn.pending::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: 1.5px solid var(--dim-2);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: bt-spin 0.7s linear infinite;
+}
+@keyframes bt-spin { to { transform: rotate(360deg); } }
+
+/* ── Timer (pomodoro + stopwatch) ─────────────────────────────────────────── */
+
+.view-pomodoro,
+.view-stopwatch { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.timer-display { font-size: 44px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
+.timer-controls { display: flex; gap: 8px; }
+.task-row { display: flex; gap: 6px; width: 100%; }
+.task-input { flex: 1 1 auto; min-width: 0; background: var(--tab-on); border: 0; border-radius: 8px; padding: 6px 8px; color: var(--ink); font: 400 12px var(--font); outline: none; }
+.task-input::placeholder { color: var(--dim-2); }
+.task-list { width: 100%; max-height: 64px; overflow-y: auto; text-align: left; }
+.task { display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 12px; color: var(--ink); }
+.task span { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task.done span { text-decoration: line-through; color: var(--dim-2); }
+.task input[type="checkbox"] { flex: none; accent-color: #3b9eff; }
+.task-del { flex: none; background: none; border: 0; padding: 0 2px; color: var(--dim-2); cursor: pointer; font-size: 13px; line-height: 1; }
+.task-del:hover { color: var(--ink); }
+
 /* ── Utility ────────────────────────────────────────────────────────────── */
 
 .grow {

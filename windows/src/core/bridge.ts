@@ -133,7 +133,31 @@ export const Bridge = {
   toggleDnd: () => call<boolean>("toggle_dnd"),
   /** MB of RAM freed. Blocks the PowerShell worker ~1 s while it runs. */
   memoryBoost: () => call<number>("memory_boost"),
+
+  // ── Bluetooth ─────────────────────────────────────────────────────────────
+  getBtDevices: () => call<BtDevices>("get_bt_devices"),
+  /** `name` is a single string argument: invoke takes `{ name }`, not positional. */
+  btConnect: (name: string) => call<BtAction>("bt_connect", { name }),
+  btDisconnect: (name: string) => call<BtAction>("bt_disconnect", { name }),
 };
+
+export interface BtDevice {
+  name: string;
+  /** Icon hint: headphones / speaker / keyboard / mouse / gamepad / phone / "". */
+  type: string;
+  /** -1 = unknown or disconnected. */
+  battery: number;
+  connected: boolean;
+}
+
+export interface BtDevices {
+  devices: BtDevice[];
+}
+
+export interface BtAction {
+  ok: boolean;
+  error?: string;
+}
 
 export interface IntegrationUpdate {
   id: string;
@@ -253,6 +277,25 @@ export function registerControlCenterListeners() {
   });
   void onEvent<{ level: number }>("brightness-changed", (payload) => {
     State.brightness.level = payload.level;
+    State.notify();
+  });
+}
+
+/**
+ * `bt-devices` is the full list after every connect/disconnect this app asked
+ * for; `bt-device-event` is the confirmation for the one device. External
+ * changes emit nothing — the view re-queries with get_bt_devices when it opens.
+ */
+export function registerBluetoothListeners() {
+  void onEvent<BtDevices>("bt-devices", (payload) => {
+    State.bluetooth.devices = payload.devices;
+    State.notify();
+  });
+  void onEvent<{ type: string; name: string; battery: number }>("bt-device-event", (payload) => {
+    const d = State.bluetooth.devices.find((x) => x.name === payload.name);
+    if (!d) return;
+    d.connected = payload.type === "connected";
+    if (payload.battery >= 0) d.battery = payload.battery;
     State.notify();
   });
 }

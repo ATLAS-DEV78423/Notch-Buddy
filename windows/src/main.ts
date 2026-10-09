@@ -5,11 +5,12 @@ import {
   Bridge,
   IS_TAURI,
   onEvent,
+  registerBluetoothListeners,
   registerControlCenterListeners,
   registerMediaStatsListeners,
 } from "./core/bridge";
 import { Sound } from "./core/sound";
-import { State, type Settings } from "./core/state";
+import { startTimerTick, State, type Settings } from "./core/state";
 import { Island } from "./island/island";
 import { registerHookHandlers } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
@@ -71,6 +72,8 @@ async function main() {
   registerIntegrationHandlers(island);
   registerMediaStatsListeners();
   registerControlCenterListeners();
+  registerBluetoothListeners();
+  startTimerTick();
 
   island.launch();
 

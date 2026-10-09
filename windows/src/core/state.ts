@@ -2,6 +2,13 @@
 
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName, ViewGroup } from "./layout";
 import type { EyeShape } from "../mochi/engine";
+import { Sound } from "./sound";
+
+/** Durations the briefs fix: focus counts down from 25 min, break from 5 min. */
+export const FOCUS_SECONDS = 25 * 60;
+export const BREAK_SECONDS = 5 * 60;
+
+const TASKS_KEY = "coucou.pomo.tasks";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
 export type PillBadge = "approval" | "finished" | "error";
@@ -170,7 +177,7 @@ class AppState {
   bluetooth: { devices: Array<{ name: string; type: string; battery: number; connected: boolean }> } = { devices: [] };
   battery: { level: number; charging: boolean; timeRemaining: number } = { level: 100, charging: false, timeRemaining: 0 };
   clipboard: { lastUrl: string } = { lastUrl: "" };
-  timer: { mode: "focus" | "break" | "stopwatch"; running: boolean; remaining: number; tasks: Array<{ text: string; done: boolean }> } = { mode: "focus", running: false, remaining: 25 * 60, tasks: [] };
+  timer: { mode: "focus" | "break" | "stopwatch"; running: boolean; remaining: number; tasks: Array<{ text: string; done: boolean }> } = { mode: "focus", running: false, remaining: FOCUS_SECONDS, tasks: [] };
   weather: { temp: number; condition: string; humidity: number; wind: number } = { temp: 0, condition: "", humidity: 0, wind: 0 };
   viewGroup: ViewGroup = "agents";
 
@@ -304,9 +311,91 @@ class AppState {
     this.notify();
   }
 
+  // ── Timer: focus / break count down, stopwatch counts up — one machine ─────
+
+  /** What the current mode's Reset rewinds to (stopwatch starts at 0). */
+  private timerResetValue(): number {
+    if (this.timer.mode === "stopwatch") return 0;
+    return this.timer.mode === "break" ? BREAK_SECONDS : FOCUS_SECONDS;
+  }
+
+  timerToggle() {
+    this.timer.running = !this.timer.running;
+    this.notify();
+  }
+
+  timerReset() {
+    this.timer.running = false;
+    this.timer.remaining = this.timerResetValue();
+    this.notify();
+  }
+
+  /** Only one of the three can run at a time: switching stops and rewinds. */
+  timerSetMode(mode: "focus" | "break" | "stopwatch") {
+    this.timer.mode = mode;
+    this.timer.running = false;
+    this.timer.remaining = this.timerResetValue();
+    this.notify();
+  }
+
+  savePomoTasks() {
+    try {
+      localStorage.setItem(TASKS_KEY, JSON.stringify(this.timer.tasks));
+    } catch {
+      /* a browser without storage must not break the view */
+    }
+  }
+
+  /** The single 1 s tick. The interval itself is registered once from main. */
+  tickTimer() {
+    const t = this.timer;
+    if (!t.running) return;
+    if (t.mode === "stopwatch") {
+      t.remaining++;
+    } else {
+      t.remaining--;
+      if (t.remaining <= 0) {
+        t.remaining = 0;
+        t.running = false;
+        this.timerEnded();
+      }
+    }
+    this.notify();
+  }
+
+  /** Countdown hit zero: chime, then the NoteView-style in-island note.
+   *  No Windows toast helper exists in this app yet (see report concerns). */
+  private timerEnded() {
+    const wasFocus = this.timer.mode === "focus";
+    Sound.play("finish");
+    window.setTimeout(() => Sound.play("approve"), 400);
+    this.noteMessage = wasFocus
+      ? "Focus finished — take a break."
+      : "Break's over — back to focus.";
+    if (this.mode !== "expanded" || this.view === "note") return;
+    const prev = this.view;
+    this.setView("note");
+    window.setTimeout(() => {
+      if (this.view === "note") this.setView(prev);
+    }, 2400);
+  }
+
   defaultView(): IslandViewName {
     return this.tasks.length === 0 ? "empty" : "overview";
   }
 }
 
 export const State = new AppState();
+
+// The pomodoro task list persists across restarts (brief: localStorage).
+try {
+  const raw = localStorage.getItem(TASKS_KEY);
+  if (raw) State.timer.tasks = JSON.parse(raw) as Array<{ text: string; done: boolean }>;
+} catch {
+  /* no storage, no saved tasks */
+}
+
+/** The one interval behind focus, break and stopwatch — registered once from main. */
+export function startTimerTick() {
+  window.setInterval(() => State.tickTimer(), 1000);
+}

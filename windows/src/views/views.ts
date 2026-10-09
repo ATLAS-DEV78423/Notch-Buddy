@@ -567,12 +567,11 @@ function renderDashboardView(): HTMLElement {
   );
 
   const timer = State.timer;
-  const mins = Math.floor(timer.remaining / 60);
-  const secs = String(timer.remaining % 60).padStart(2, "0");
   const timerLabel = timer.mode.charAt(0).toUpperCase() + timer.mode.slice(1);
-  const timerWidget = h("div", { class: "widget", onclick: () => State.setView("pomodoro") },
+  const timerWidget = h("div", { class: "widget", onclick: () => State.setView(timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
     h("div", { class: "widget-title" }, "Timer"),
-    h("div", { class: "widget-value" }, `${timerLabel} · ${mins}:${secs}`),
+    h("div", { class: "widget-value" },
+      `${timerLabel} · ${pad2(timer.remaining / 60)}:${pad2(timer.remaining % 60)}`),
   );
 
   const weather = State.weather;
@@ -803,7 +802,98 @@ function buildControlCenter(): ViewHost {
     },
   };
 }
-function renderBluetoothView(): HTMLElement { return h("div", { class: "view-bluetooth" }, "Bluetooth"); }
+// ── Bluetooth ────────────────────────────────────────────────────────────────
+
+/** Glyph per get_bt_devices `type`; "" falls back to a neutral dot. */
+const BT_ICONS: Record<string, string> = {
+  headphones: "🎧",
+  speaker: "🔊",
+  keyboard: "⌨️",
+  mouse: "🖱️",
+  gamepad: "🎮",
+  phone: "📱",
+};
+
+/** The device a connect/disconnect is in flight for — the worker can take ~14 s. */
+let btPending = "";
+let btError = "";
+
+async function toggleBt(name: string, connected: boolean) {
+  if (btPending) return;
+  btPending = name;
+  btError = "";
+  State.notify();
+  const res = connected ? await Bridge.btDisconnect(name) : await Bridge.btConnect(name);
+  btPending = "";
+  if (res && !res.ok) btError = res.error ?? "That didn't work.";
+  // Success lands through the bt-devices / bt-device-event listeners.
+  State.notify();
+}
+
+async function seedBluetooth() {
+  const res = await Bridge.getBtDevices();
+  if (res?.devices) {
+    State.bluetooth.devices = res.devices;
+    State.notify();
+  }
+}
+
+function renderBluetoothView(): HTMLElement {
+  const devices = State.bluetooth.devices;
+  const connected = devices.filter((d) => d.connected).length;
+  const rows = devices.map((d) => {
+    const pending = btPending === d.name;
+    const busy = btPending !== "" && !pending;
+    return h(
+      "div",
+      { class: `bt-device${d.connected ? " on" : ""}` },
+      h("span", { class: "bt-icon", text: BT_ICONS[d.type] ?? "•" }),
+      h("span", { class: "bt-name", text: d.name }),
+      d.battery >= 0 ? h("span", { class: "bt-battery", text: `${d.battery}%` }) : null,
+      h("button", {
+        class: pending ? "bt-btn pending" : "bt-btn",
+        disabled: busy,
+        text: pending
+          ? d.connected
+            ? "Disconnecting…"
+            : "Connecting…"
+          : d.connected
+            ? "Disconnect"
+            : "Connect",
+        onclick: () => void toggleBt(d.name, d.connected),
+      }),
+    );
+  });
+  return h(
+    "div",
+    { class: "view-bluetooth" },
+    h(
+      "div",
+      { class: "bt-head" },
+      h("span", {
+        class: "bt-count",
+        text: devices.length ? `${connected} of ${devices.length} connected` : "Paired devices",
+      }),
+      h("button", { class: "bt-refresh", text: "Refresh", onclick: () => void seedBluetooth() }),
+    ),
+    btError ? h("div", { class: "bt-error", text: btError }) : null,
+    ...(devices.length === 0
+      ? [h("div", { class: "bt-empty", text: "No paired devices." })]
+      : rows),
+  );
+}
+
+/** Seeds on open like the control center: external changes emit no events. */
+function buildBluetoothView(): ViewHost {
+  let shown = false;
+  State.subscribe(() => {
+    const on = State.view === "bluetooth" && State.mode === "expanded";
+    if (on && !shown) void seedBluetooth();
+    shown = on;
+  });
+  return liveView(renderBluetoothView);
+}
+
 function buildStatsView(): ViewHost {
   const NET_FULL_SCALE = 10 * 1024 * 1024; // 10 MB/s fills the bar.
   const fmtRate = (bps: number) => {
@@ -844,8 +934,124 @@ function buildStatsView(): ViewHost {
     },
   };
 }
-function renderPomodoroView(): HTMLElement { return h("div", { class: "view-pomodoro" }, "Pomodoro"); }
-function renderStopwatchView(): HTMLElement { return h("div", { class: "view-stopwatch" }, "Stopwatch"); }
+// ── Pomodoro ─────────────────────────────────────────────────────────────────
+
+const pad2 = (n: number) => String(Math.floor(n)).padStart(2, "0");
+
+/** Stable hosts (not liveView): the task input must survive the 1 Hz tick. */
+function buildPomodoroView(): ViewHost {
+  const segFocus = h("button", { text: "Focus", onclick: () => State.timerSetMode("focus") });
+  const segBreak = h("button", { text: "Break", onclick: () => State.timerSetMode("break") });
+  const display = h("div", { class: "timer-display" });
+  const startPause = btn("Start", "primary", () => State.timerToggle());
+  const startLabel = startPause.querySelector("span") as HTMLElement;
+  const resetBtn = btn("Reset", "secondary", () => State.timerReset());
+  const list = h("div", { class: "task-list" });
+
+  const input = h("input", {
+    class: "task-input",
+    placeholder: "Add a task…",
+    onkeydown: (e: Event) => {
+      if ((e as KeyboardEvent).key === "Enter") addTask();
+    },
+  }) as HTMLInputElement;
+
+  function addTask() {
+    const text = input.value.trim();
+    if (!text) return;
+    State.timer.tasks.push({ text, done: false });
+    State.savePomoTasks();
+    input.value = "";
+    State.notify();
+  }
+
+  const el = h(
+    "div",
+    { class: "view" },
+    h(
+      "div",
+      { class: "view-pomodoro" },
+      h("div", { class: "seg" }, segFocus, segBreak),
+      display,
+      h("div", { class: "timer-controls" }, startPause, resetBtn),
+      h(
+        "div",
+        { class: "task-row" },
+        input,
+        h("button", { class: "bt-refresh", text: "Add", onclick: addTask }),
+      ),
+      list,
+    ),
+  );
+
+  let tasksKey = "";
+  return {
+    el,
+    sync() {
+      const t = State.timer;
+      // The stopwatch owns the machine while that view is up.
+      if (t.mode === "stopwatch") State.timerSetMode("focus");
+      display.textContent = `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`;
+      segFocus.classList.toggle("on", t.mode === "focus");
+      segBreak.classList.toggle("on", t.mode === "break");
+      startLabel.textContent = t.running ? "Pause" : "Start";
+
+      const key = t.tasks.map((x) => `${x.text}:${x.done}`).join("|");
+      if (key === tasksKey) return;
+      tasksKey = key;
+      clear(list);
+      t.tasks.forEach((task, i) => {
+        list.append(
+          h(
+            "div",
+            { class: task.done ? "task done" : "task" },
+            h("input", {
+              type: "checkbox",
+              checked: task.done,
+              onchange: () => {
+                task.done = !task.done;
+                State.savePomoTasks();
+                State.notify();
+              },
+            }),
+            h("span", { text: task.text }),
+            h("button", {
+              class: "task-del",
+              text: "×",
+              onclick: () => {
+                State.timer.tasks.splice(i, 1);
+                State.savePomoTasks();
+                State.notify();
+              },
+            }),
+          ),
+        );
+      });
+    },
+  };
+}
+
+// ── Stopwatch ────────────────────────────────────────────────────────────────
+
+function renderStopwatchView(): HTMLElement {
+  const t = State.timer;
+  if (t.mode !== "stopwatch") State.timerSetMode("stopwatch");
+  return h(
+    "div",
+    { class: "view-stopwatch" },
+    h(
+      "div",
+      { class: "timer-display" },
+      `${pad2(t.remaining / 3600)}:${pad2((t.remaining % 3600) / 60)}:${pad2(t.remaining % 60)}`,
+    ),
+    h(
+      "div",
+      { class: "timer-controls" },
+      btn(t.running ? "Pause" : "Start", "primary", () => State.timerToggle()),
+      btn("Reset", "secondary", () => State.timerReset()),
+    ),
+  );
+}
 function renderWeatherView(): HTMLElement { return h("div", { class: "view-weather" }, "Weather"); }
 
 /** The dispatcher toggles `.on` on the host's root, so the stub's own div sits
@@ -888,10 +1094,10 @@ export function buildViews(
   map.set("dashboard", liveView(renderDashboardView));
   map.set("media", buildMediaView());
   map.set("controlCenter", buildControlCenter());
-  map.set("bluetooth", stubView(renderBluetoothView));
+  map.set("bluetooth", buildBluetoothView());
   map.set("stats", buildStatsView());
-  map.set("pomodoro", stubView(renderPomodoroView));
-  map.set("stopwatch", stubView(renderStopwatchView));
+  map.set("pomodoro", buildPomodoroView());
+  map.set("stopwatch", liveView(renderStopwatchView));
   map.set("weather", stubView(renderWeatherView));
   return map;
 }
