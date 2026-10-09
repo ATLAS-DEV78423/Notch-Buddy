@@ -1,5 +1,5 @@
 // Battery — level, charging state and remaining time from the Windows power
-// API. One background poller emits `battery-status` whenever a reading changes.
+// API. One background poller emits `battery-status` every 30 s.
 // Parks on the shared PollGate like the other pollers: a hidden island costs
 // nothing, and battery state only needs to be fresh while it can be seen.
 
@@ -54,16 +54,16 @@ mod imp {
     pub fn setup(app: &AppHandle, gate: Arc<PollGate>) {
         let app = app.clone();
         std::thread::spawn(move || {
-            let mut last: Option<BatteryStatus> = None;
-            loop {
-                gate.wait_until_active();
-                while gate.is_active() {
-                    if let Some(now) = read() {
-                        if last.as_ref() != Some(&now) {
-                            let _ = app.emit_to(WINDOW_LABEL, "battery-status", &now);
-                            last = Some(now);
-                        }
-                    }
+        loop {
+            gate.wait_until_active();
+            while gate.is_active() {
+                // Emit every tick, not only on change: the first emit races JS
+                // listener registration, so a never-changing reading (AC at
+                // 100%) would leave State.battery stale all session. The
+                // frontend edge logic is diff-based, periodic emits are safe.
+                if let Some(now) = read() {
+                    let _ = app.emit_to(WINDOW_LABEL, "battery-status", &now);
+                }
                     std::thread::sleep(Duration::from_secs(30));
                 }
             }

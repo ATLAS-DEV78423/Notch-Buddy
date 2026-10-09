@@ -273,33 +273,56 @@ mod imp {
     }
 }
 
+/// The SMTC round-trip completes with the blocking `.get()`; a hung player
+/// must not pin a tokio worker (that runtime also serves chat and approvals),
+/// so every command body runs on the blocking pool — same as system_control.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn media_play_pause(app: AppHandle) -> Result<(), String> {
-    imp::play_pause()?;
-    // Refresh now: the play/pause glyph must flip with the click, not a second later.
-    let _ = imp::poll_once(&app);
-    Ok(())
+    blocking(move || {
+        imp::play_pause()?;
+        // Refresh now: the play/pause glyph must flip with the click, not a second later.
+        let _ = imp::poll_once(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn media_next(app: AppHandle) -> Result<(), String> {
-    imp::next()?;
-    let _ = imp::poll_once(&app);
-    Ok(())
+    blocking(move || {
+        imp::next()?;
+        let _ = imp::poll_once(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn media_prev(app: AppHandle) -> Result<(), String> {
-    imp::prev()?;
-    let _ = imp::poll_once(&app);
-    Ok(())
+    blocking(move || {
+        imp::prev()?;
+        let _ = imp::poll_once(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn media_seek(app: AppHandle, position: f64) -> Result<(), String> {
-    imp::seek(position)?;
-    let _ = imp::poll_once(&app);
-    Ok(())
+    blocking(move || {
+        imp::seek(position)?;
+        let _ = imp::poll_once(&app);
+        Ok(())
+    })
+    .await
 }
 
 pub fn setup_media(app: &AppHandle, gate: Arc<PollGate>) {
