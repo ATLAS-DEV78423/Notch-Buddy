@@ -16,6 +16,7 @@ import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
+import { backgroundEffect, backgroundColors, drawBackground } from "../views/backgroundEffects";
 import { buildBanners, buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
@@ -40,6 +41,7 @@ export class Island {
   private clipEl!: HTMLElement;
   private contentEl!: HTMLElement;
   private viewsEl!: HTMLElement;
+  private bgCanvas!: HTMLCanvasElement;
   private botCanvas!: HTMLCanvasElement;
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
@@ -172,6 +174,7 @@ export class Island {
 
     this.wakeStrip = h("div", { id: "wake-strip" });
     this.botGlow = h("div", { id: "bot-glow" });
+    this.bgCanvas = h("canvas", { id: "bg-canvas" });
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
@@ -199,6 +202,7 @@ export class Island {
     this.clipEl = h(
       "div",
       { id: "island-clip" },
+      this.bgCanvas,
       this.greetingCanvas,
       this.uploadCanvas.el,
       this.contentEl,
@@ -694,6 +698,8 @@ export class Island {
       this.syncDom();
     }
 
+    this.drawBackgroundCanvas();
+
     this.updateBotTargets();
     this.botCx.step(dt);
     this.botCy.step(dt);
@@ -731,11 +737,15 @@ export class Island {
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
       this.width.animating || this.height.animating || this.radius.animating;
+    // An active effect keeps the loop alive while the island is visible; the
+    // hidden branch stays exactly as before, so a hidden island still costs
+    // nothing beyond geometry settling.
     const busy = State.mode === "hidden"
       ? settling
       : settling ||
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
-        greetingActive || this.engine.busy || UploadSeq.isActive;
+        greetingActive || this.engine.busy || UploadSeq.isActive ||
+        backgroundEffect() !== "off";
 
     if (busy) {
       requestAnimationFrame(this.frame);
@@ -744,6 +754,30 @@ export class Island {
       Sound.idle();
     }
   };
+
+  /** Selected background effect, drawn behind everything in #island-clip. */
+  private drawBackgroundCanvas() {
+    const fx = backgroundEffect();
+    const on = fx !== "off" && State.mode !== "hidden" && this.width.value >= 4 && this.height.value >= 4;
+    const want = on ? "block" : "none";
+    if (this.bgCanvas.style.display !== want) this.bgCanvas.style.display = want;
+    if (!on) return;
+    const w = Math.round(this.width.value);
+    const h = Math.round(this.height.value);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const bw = Math.round(w * dpr);
+    const bh = Math.round(h * dpr);
+    if (this.bgCanvas.width !== bw || this.bgCanvas.height !== bh) {
+      this.bgCanvas.width = bw;
+      this.bgCanvas.height = bh;
+      this.bgCanvas.style.width = `${w}px`;
+      this.bgCanvas.style.height = `${h}px`;
+    }
+    const ctx = this.bgCanvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackground(ctx, fx, w, h, backgroundColors());
+  }
 
   private updateBotTargets() {
     const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
