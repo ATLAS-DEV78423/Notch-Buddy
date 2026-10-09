@@ -98,7 +98,7 @@ mod imp {
     }
 
     fn stats_between(prev: &Sample, now: &Sample) -> Option<SystemStats> {
-        let dt = now.at.duration_since(prev.at).as_secs_f64();
+        let dt = now.at.saturating_duration_since(prev.at).as_secs_f64();
         if dt <= 0.0 {
             return None;
         }
