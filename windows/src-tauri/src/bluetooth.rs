@@ -71,9 +71,10 @@ mod imp {
 
     /// The first command also pays for the PowerShell start-up, the C#
     /// compile (Add-Type) and the first WinRT query, so it gets a wider
-    /// deadline than the rest; connect waits for the device to change state.
-    const FIRST_TIMEOUT: Duration = Duration::from_secs(20);
-    const TIMEOUT: Duration = Duration::from_secs(15);
+    /// deadline than the rest; a connect waits up to 12 s (the reference's
+    /// 30 × 400 ms poll) for the device to change state, plus two scans.
+    const FIRST_TIMEOUT: Duration = Duration::from_secs(25);
+    const TIMEOUT: Duration = Duration::from_secs(20);
     const SCRIPT: &str = include_str!("bluetooth.ps1");
 
     struct Worker {
@@ -288,6 +289,17 @@ mod imp {
             let response = ask(json!({ "cmd": "nope" })).expect("a response");
             let err = checked(response).unwrap_err();
             assert!(err.contains("unknown command"), "got: {err}");
+        }
+
+        /// A connect attempt the worker refuses resolves as `{ ok: false, … }`
+        /// with the device list still attached — never a panic, never a hang.
+        #[test]
+        fn connect_to_an_unknown_device_is_a_friendly_failure() {
+            let (action, devices) = set("__no_such_device__".to_string(), true);
+            assert!(!action.ok);
+            assert!(action.error.is_some(), "a refusal must explain itself");
+            let list = devices.expect("the refusal still carries the device list");
+            assert!(list.devices.iter().all(|d| !d.name.is_empty()));
         }
     }
 }

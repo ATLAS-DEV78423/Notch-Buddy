@@ -254,7 +254,7 @@ namespace WinBt {
                 try {
                     if (Set(id, connect)) {
                         outcome.Accepted = true;
-                        for (int i = 0; i < 20 && !outcome.Reached; i++) {
+                        for (int i = 0; i < 30 && !outcome.Reached; i++) {
                             _never.WaitOne(400);   // a wait that keeps this STA's message pump alive
                             Dev d = Scan().Find(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
                             outcome.Reached = d != null && d.Connected == connect;
