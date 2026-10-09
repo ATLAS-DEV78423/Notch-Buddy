@@ -54,6 +54,12 @@ function readAccent(): string {
 let effect = readEffect();
 let accent = readAccent();
 
+function applyAccent(): void {
+  document.documentElement.style.setProperty("--accent", accent);
+}
+
+applyAccent();
+
 // The settings window writes the same keys from its own webview; `storage` only
 // fires in the *other* windows, which is exactly the cross-window change we want.
 window.addEventListener("storage", (e) => {
@@ -61,6 +67,7 @@ window.addEventListener("storage", (e) => {
     effect = readEffect();
   } else if (e.key === ACCENT_KEY) {
     accent = readAccent();
+    applyAccent();
     accentPalette = null;
   } else {
     return;

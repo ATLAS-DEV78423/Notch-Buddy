@@ -1,32 +1,7 @@
 /* Coucou for Windows — same palette, sizes and type scale as the macOS island.
    Every colour below is copied from the Swift views. */
 
-:root {
-  color-scheme: dark;
-
-  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", sans-serif;
-  --mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
-
-  --ink: #f5f6f8;        /* primary text */
-  --ink-2: #f1f2f4;
-  --dim: #9398a1;
-  --dim-2: #8e939c;
-  --dim-3: #6b7079;
-  --dim-4: #5f646d;
-  --dim-5: #4b5563;
-  --card: #141518;
-  --card-flat: #0e0f11;
-  --tab-on: #1d1f23;
-  --hairline: rgba(255, 255, 255, 0.035);
-  --red: #f4505e;
-  --red-text: #ff8d97;
-  --green: #22c55e;
-  --green-2: #34d399;
-  --amber: #f5a524;
-  --cyan: #22d3ee;
-  --indigo: #6366f1;
-  --pink: #f472b6;
-}
+@import "./tokens.css";
 
 * {
   box-sizing: border-box;
@@ -841,7 +816,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .banner-text { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .banner-open {
-  background: #3b9eff;
+  background: var(--accent);
   border: 0;
   border-radius: 999px;
   padding: 3px 10px;
@@ -869,7 +844,7 @@ input[type="range"]::-webkit-slider-thumb {
 .media-track { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-artist { font-size: 12px; color: var(--dim-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-progress { height: 4px; background: var(--tab-on); border-radius: 2px; margin: 8px 0; cursor: pointer; }
-.media-progress-fill { height: 100%; background: #3b9eff; border-radius: 2px; transition: width 0.3s; }
+.media-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
 .media-controls { display: flex; gap: 8px; }
 .media-controls button { background: var(--tab-on); border: none; border-radius: 8px; padding: 6px 12px; color: var(--ink); cursor: pointer; font: 600 13px var(--font); }
 .media-controls button:hover { background: #252830; }
@@ -880,7 +855,7 @@ input[type="range"]::-webkit-slider-thumb {
 .stat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .stat-label { font-size: 11px; color: var(--dim-2); width: 44px; flex: none; }
 .stat-bar { flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; overflow: hidden; }
-.stat-fill { height: 100%; background: #3b9eff; border-radius: 3px; transition: width 0.3s; }
+.stat-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
 .stat-value { font-size: 11px; color: var(--ink); width: 56px; flex: none; text-align: right; }
 
 /* ── Control center ───────────────────────────────────────────────────────── */
@@ -889,11 +864,11 @@ input[type="range"]::-webkit-slider-thumb {
 .cc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .cc-label { font-size: 11px; color: var(--dim-2); width: 56px; flex: none; }
 .cc-slider { flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; cursor: pointer; touch-action: none; }
-.cc-slider-fill { height: 100%; background: #3b9eff; border-radius: 3px; }
+.cc-slider-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 .cc-icon-btn { background: none; border: none; padding: 2px; cursor: pointer; font-size: 14px; line-height: 1; }
 .cc-toggle { background: var(--tab-on); border: none; border-radius: 8px; padding: 6px 10px; color: var(--dim-2); cursor: pointer; font: 600 11.5px var(--font); }
 .cc-toggle:hover { background: #252830; }
-.cc-toggle.on { background: rgba(59, 158, 255, 0.18); color: #3b9eff; }
+.cc-toggle.on { background: rgba(59, 158, 255, 0.18); color: var(--accent); }
 .cc-note { font-size: 11px; color: var(--dim-2); min-width: 72px; }
 
 /* ── Bluetooth ────────────────────────────────────────────────────────────── */
@@ -938,7 +913,7 @@ input[type="range"]::-webkit-slider-thumb {
 .task { display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 12px; color: var(--ink); }
 .task span { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task.done span { text-decoration: line-through; color: var(--dim-2); }
-.task input[type="checkbox"] { flex: none; accent-color: #3b9eff; }
+.task input[type="checkbox"] { flex: none; accent-color: var(--accent); }
 .task-del { flex: none; background: none; border: 0; padding: 0 2px; color: var(--dim-2); cursor: pointer; font-size: 13px; line-height: 1; }
 .task-del:hover { color: var(--ink); }
 
