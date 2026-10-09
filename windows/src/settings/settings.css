@@ -265,3 +265,45 @@ select option {
   background: rgba(245, 165, 36, 0.13);
   color: #fbc06a;
 }
+
+/* Appearance — effect picker and accent swatches */
+.pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fx-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fx-opt.selected {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.fx-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.swatch.selected {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink);
+}

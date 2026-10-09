@@ -7,6 +7,10 @@ import { Bridge, onEvent, type HookStatus, type AgentStatus, type AgentPreview }
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
 
+// TODO: import type { BackgroundEffect } from "../views/backgroundEffects" once
+// Task 16 lands that file; kept local until then so the settings build stands alone.
+type BackgroundEffect = 'off' | 'visualizer' | 'waves' | 'synthwave' | 'fireflies' | 'holographic' | 'topographic' | 'albumGlow' | 'ambient' | 'rgb';
+
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
 
@@ -441,6 +445,75 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
   return h("section", {}, h("h2", {}, h("span", { text: "Integrations" })), note, list);
 }
 
+// ── Appearance section ────────────────────────────────────────────────────────
+
+const BG_EFFECTS: { id: BackgroundEffect; label: string; preview: string }[] = [
+  { id: "off", label: "Off", preview: "#141518" },
+  { id: "visualizer", label: "Visualizer", preview: "linear-gradient(0deg,#22c55e,#3B9EFF)" },
+  { id: "waves", label: "Waves", preview: "linear-gradient(135deg,#3B9EFF,#6366F1)" },
+  { id: "synthwave", label: "Synthwave", preview: "linear-gradient(135deg,#F4505E,#A78BFA)" },
+  { id: "fireflies", label: "Fireflies", preview: "linear-gradient(135deg,#0b0c0e,#FACC15)" },
+  { id: "holographic", label: "Holographic", preview: "linear-gradient(135deg,#F4505E,#FACC15,#34D399,#3B9EFF,#A78BFA)" },
+  { id: "topographic", label: "Topographic", preview: "linear-gradient(135deg,#34D399,#0b0c0e)" },
+  { id: "albumGlow", label: "Album Glow", preview: "linear-gradient(135deg,#EC4899,#F5A524)" },
+  { id: "ambient", label: "Ambient", preview: "linear-gradient(135deg,#6366F1,#0b0c0e)" },
+  { id: "rgb", label: "RGB", preview: "linear-gradient(135deg,#F4505E,#FACC15,#34D399,#3B9EFF)" },
+];
+
+const ACCENT_COLORS = ['#3B9EFF', '#A78BFA', '#6366F1', '#F5A524', '#F4505E', '#34D399', '#FACC15', '#EC4899', '#F5F6F8'];
+
+function appearanceSection(): HTMLElement {
+  const storedFx = localStorage.getItem("coucou.bgEffect") as BackgroundEffect | null;
+  const storedAccent = localStorage.getItem("coucou.accentColor");
+
+  // The island applies both live off `storage` events, so plain setItem is enough.
+  const fxRow = h("div", { class: "pick-row" });
+  let fx = BG_EFFECTS.some((e) => e.id === storedFx) ? storedFx! : "off";
+  const fxButtons = new Map<BackgroundEffect, HTMLButtonElement>();
+  for (const e of BG_EFFECTS) {
+    const btn = h("button", {
+      class: "fx-opt",
+      onclick: () => {
+        fx = e.id;
+        localStorage.setItem("coucou.bgEffect", fx);
+        for (const [id, el] of fxButtons) el.classList.toggle("selected", id === fx);
+      },
+    });
+    btn.append(h("i", { class: "fx-thumb", style: `background:${e.preview}` }), h("span", { text: e.label }));
+    if (e.id === fx) btn.classList.add("selected");
+    fxButtons.set(e.id, btn);
+    fxRow.append(btn);
+  }
+
+  const swRow = h("div", { class: "pick-row" });
+  let accent = ACCENT_COLORS.includes(storedAccent ?? "") ? storedAccent! : ACCENT_COLORS[0];
+  const swatches = new Map<string, HTMLButtonElement>();
+  for (const color of ACCENT_COLORS) {
+    const sw = h("button", {
+      class: "swatch",
+      title: color,
+      style: `background:${color}`,
+      onclick: () => {
+        accent = color;
+        localStorage.setItem("coucou.accentColor", accent);
+        for (const [c, el] of swatches) el.classList.toggle("selected", c === accent);
+      },
+    });
+    if (color === accent) sw.classList.add("selected");
+    swatches.set(color, sw);
+    swRow.append(sw);
+  }
+
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: "Appearance" })),
+    h("div", { class: "hint", text: "The background effect lives behind Pip in the notch; the accent color tints pills and highlights. Both apply instantly." }),
+    h("div", { class: "row" }, h("label", { text: "Background" }), fxRow),
+    h("div", { class: "row" }, h("label", { text: "Accent color" }), swRow),
+  );
+}
+
 // ── General section ───────────────────────────────────────────────────────────
 
 function generalSection(): HTMLElement {
@@ -553,6 +626,7 @@ async function main() {
     apiSection(hasKey),
     integrationsSection(present),
     generalSection(),
+    appearanceSection(),
     agentsSection,
     h("div", {
       class: "hint",
