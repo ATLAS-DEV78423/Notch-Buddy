@@ -50,13 +50,13 @@ mod imp {
     /// IF_TYPE_LOOPBACK: counting it would double every localhost transfer.
     const IF_TYPE_LOOPBACK: u32 = 24;
 
-    fn net_octets() -> (u64, u64) {
+    fn net_octets() -> Option<(u64, u64)> {
         let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
         // SAFETY: GetIfTable2 allocates the table; FreeMibTable releases it.
         // The pointer is only dereferenced while the table exists.
         unsafe {
             if GetIfTable2(&mut table).is_err() || table.is_null() {
-                return (0, 0);
+                return None;
             }
             let mut rx = 0u64;
             let mut tx = 0u64;
@@ -69,32 +69,34 @@ mod imp {
                 tx = tx.saturating_add(row.OutOctets);
             }
             FreeMibTable(table as *const _);
-            (rx, tx)
+            Some((rx, tx))
         }
     }
 
-    fn read() -> Sample {
+    /// `None` when any counter is unavailable: the caller then skips the tick
+    /// instead of diffing against a zero sentinel, which would emit a one-tick
+    /// spike (cumulative ÷ dt) on the first recovery and report a lifetime
+    /// CPU average for the whole gap.
+    fn read() -> Option<Sample> {
         let mut idle = FILETIME::default();
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
-        let cpu = unsafe {
-            if GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)).is_err() {
-                (0, 0)
-            } else {
-                // Kernel time includes idle time.
-                (filetime(idle), filetime(kernel) + filetime(user))
-            }
-        };
+        unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)).ok()? };
+        // Kernel time includes idle time.
+        let cpu = (filetime(idle), filetime(kernel) + filetime(user));
 
         let mut mem = MEMORYSTATUSEX {
             dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
             ..Default::default()
         };
-        let ram = unsafe { GlobalMemoryStatusEx(&mut mem) }
-            .map(|_| mem.dwMemoryLoad as f32)
-            .unwrap_or(0.0);
+        unsafe { GlobalMemoryStatusEx(&mut mem).ok()? };
 
-        Sample { at: Instant::now(), cpu, net: net_octets(), ram }
+        Some(Sample {
+            at: Instant::now(),
+            cpu,
+            net: net_octets()?,
+            ram: mem.dwMemoryLoad as f32,
+        })
     }
 
     fn stats_between(prev: &Sample, now: &Sample) -> Option<SystemStats> {
@@ -120,17 +122,22 @@ mod imp {
     }
 
     /// Parks on the shared gate: no polling, no emits while the island is
-    /// hidden. The first tick after waking diffs against the pre-park sample,
-    /// so the emitted rate is an average over the gap rather than a spike.
+    /// hidden. Waking takes a fresh baseline (line `prev = read()`), so the
+    /// first tick after a park is a clean two-second window. A failed read
+    /// skips the tick without touching `prev`; a failure at wake-up retries
+    /// after one interval instead of spinning.
     pub fn setup(app: &AppHandle, gate: Arc<PollGate>) {
         let app = app.clone();
         std::thread::spawn(move || {
             loop {
                 gate.wait_until_active();
-                let mut prev = read();
+                let Some(mut prev) = read() else {
+                    std::thread::sleep(Duration::from_secs(2));
+                    continue;
+                };
                 while gate.is_active() {
                     std::thread::sleep(Duration::from_secs(2));
-                    let now = read();
+                    let Some(now) = read() else { continue };
                     if let Some(stats) = stats_between(&prev, &now) {
                         let _ = app.emit_to(WINDOW_LABEL, "system-stats", &stats);
                     }
