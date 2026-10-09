@@ -1,6 +1,7 @@
 // Coucou for Windows — app wiring and the commands the island calls.
 
 mod agents;
+mod bluetooth;
 mod claude;
 mod files;
 mod hooks;
@@ -457,6 +458,9 @@ pub fn run() {
             system_control::toggle_night_light,
             system_control::toggle_dnd,
             system_control::memory_boost,
+            bluetooth::get_bt_devices,
+            bluetooth::bt_connect,
+            bluetooth::bt_disconnect,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
