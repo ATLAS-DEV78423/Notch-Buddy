@@ -577,9 +577,10 @@ function renderDashboardView(): HTMLElement {
   const weather = State.weather;
   const weatherWidget = h("div", { class: "widget", onclick: () => State.setView("weather") },
     h("div", { class: "widget-title" }, "Weather"),
-    weather.condition
+    weather.condition && weather.condition !== "Unavailable"
       ? h("div", { class: "widget-value" }, `${weather.temp}° ${weather.condition}`)
-      : h("div", { class: "widget-empty" }, "No weather data"),
+      : h("div", { class: "widget-empty" },
+          weather.condition ? "Weather unavailable" : "No weather data"),
   );
 
   const battery = State.battery;
@@ -1056,6 +1057,9 @@ function renderWeatherView(): HTMLElement {
   const w = State.weather;
   if (!w.condition) {
     return h("div", { class: "view-weather weather-empty" }, "Loading…");
+  }
+  if (w.condition === "Unavailable") {
+    return h("div", { class: "view-weather weather-empty" }, "Weather unavailable");
   }
   return h(
     "div",

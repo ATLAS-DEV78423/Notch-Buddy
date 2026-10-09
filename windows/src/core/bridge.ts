@@ -348,6 +348,8 @@ export function registerWeatherBatteryClipboardListeners() {
 
   void onEvent<{ url: string }>("clipboard-url", ({ url }) => {
     State.clipboard.lastUrl = url;
-    State.showBanner(url);
+    // Text and URL are the same string: the view truncates for display, the
+    // url field is what Open uses.
+    State.showBanner(url, url);
   });
 }

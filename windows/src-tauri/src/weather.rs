@@ -64,14 +64,17 @@ fn fetch() -> Option<WeatherData> {
     })
     .inspect_err(|e| log::line(format!("weather: {e}")))
     .ok()?;
-    let now = body.current_condition.first()?;
+    let Some(now) = body.current_condition.first() else {
+        log::line("weather: response has no current_condition");
+        return None;
+    };
+    let Some(desc) = now.weather_desc.first() else {
+        log::line("weather: response has no weatherDesc");
+        return None;
+    };
     Some(WeatherData {
         temp: now.temp_c.parse().unwrap_or(0.0),
-        condition: now
-            .weather_desc
-            .first()
-            .map(|d| d.value.clone())
-            .unwrap_or_default(),
+        condition: desc.value.clone(),
         humidity: now.humidity.parse().unwrap_or(0),
         wind: now.windspeed_kmph.parse().unwrap_or(0.0),
     })
@@ -80,13 +83,34 @@ fn fetch() -> Option<WeatherData> {
 pub fn setup_weather(app: &AppHandle, gate: Arc<PollGate>) {
     let app = app.clone();
     std::thread::spawn(move || {
+        // Once anything has been emitted, later failures keep the last reading
+        // on screen. Before that, the first failure announces itself so the
+        // view is not stuck on "Loading…" forever.
+        let mut announced = false;
         loop {
             gate.wait_until_active();
             while gate.is_active() {
                 // Tray → Pause stops the network call, like the integration pollers.
                 if !crate::integrations::PAUSED.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(data) = fetch() {
-                        let _ = app.emit_to(WINDOW_LABEL, "weather-update", &data);
+                    match fetch() {
+                        Some(data) => {
+                            announced = true;
+                            let _ = app.emit_to(WINDOW_LABEL, "weather-update", &data);
+                        }
+                        None if !announced => {
+                            announced = true;
+                            let _ = app.emit_to(
+                                WINDOW_LABEL,
+                                "weather-update",
+                                WeatherData {
+                                    temp: 0.0,
+                                    condition: "Unavailable".to_string(),
+                                    humidity: 0,
+                                    wind: 0.0,
+                                },
+                            );
+                        }
+                        None => {}
                     }
                 }
                 // Sleep in short steps: hiding the island parks the loop right
