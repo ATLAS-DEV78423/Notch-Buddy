@@ -27,8 +27,8 @@ function header(color: string, name: string, kind: string, extra?: Node): HTMLEl
 }
 
 /** Highlighted first row + plain rows, the layout every list card shares. */
-function listRow(accent: string, first: boolean, ...children: Node[]): HTMLElement {
-  const row = h("div", { class: first ? "int-row first" : "int-row" }, dot(accent, 5), ...children);
+function listRow(accent: string, first: boolean, i: number, ...children: Node[]): HTMLElement {
+  const row = h("div", { class: first ? "int-row first stagger" : "int-row stagger", style: `--i:${i}` }, dot(accent, 5), ...children);
   if (first) row.style.background = `${accent}14`;
   return row;
 }
@@ -131,9 +131,9 @@ function vercelCard(onDetail: () => void): HTMLElement {
         { class: "int-more", title: "Details", onclick: onDetail },
         svg(ICONS.ellipsis, 8),
       );
-      rows.append(listRow(accent, true, name, ago, more));
+      rows.append(listRow(accent, true, i, name, ago, more));
     } else {
-      rows.append(listRow(accent, false, name, ago));
+      rows.append(listRow(accent, false, i, name, ago));
     }
   });
   return h("div", { class: "int-card" }, header("#7C5CFF", "Vercel", "Deployments"), rows);
@@ -194,7 +194,7 @@ function resendCard(): HTMLElement {
       h("span", { class: "int-ago", text: timeAgo(e.createdAt) }),
     ];
     if (i === 0 && e.subject) cells.push(h("span", { class: "int-sub", text: String(e.subject) }));
-    rows.append(listRow(accent, i === 0, ...cells));
+    rows.append(listRow(accent, i === 0, i, ...cells));
   });
   return h("div", { class: "int-card" }, header("#22C55E", "Resend", "Emails", extra), rows);
 }
@@ -236,13 +236,13 @@ function stripeCard(): HTMLElement {
   const balance = (Number(d.balance ?? 0) / 100).toFixed(2);
   const currency = String(d.currency ?? "eur").toUpperCase();
   const rows = h("div", { class: "int-rows tight" });
-  for (const p of arr("integration_stripe", "payments")) {
+  arr("integration_stripe", "payments").forEach((p, i) => {
     const success = p.status === "succeeded";
     const accent = success ? "#22C55E" : "#F4505E";
     rows.append(
       h(
         "div",
-        { class: "int-row" },
+        { class: "int-row stagger", style: `--i:${i}` },
         dot(accent, 5),
         h("span", { class: "int-name", text: String(p.description ?? "Payment") }),
         h("span", {
@@ -253,7 +253,7 @@ function stripeCard(): HTMLElement {
         h("span", { class: "int-ago", text: timeAgo(p.createdAt) }),
       ),
     );
-  }
+  });
   return h(
     "div",
     { class: "int-card" },
@@ -298,20 +298,20 @@ function calcomCard(): HTMLElement {
   if (bookings.length === 0) {
     rows.append(h("div", { class: "int-empty", text: "No calls scheduled" }));
   }
-  for (const b of bookings.slice(0, 3)) {
+  bookings.slice(0, 3).forEach((b, i) => {
     const when = new Date(String(b.start));
     const day = when.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
     const time = when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     rows.append(
       h(
         "div",
-        { class: "int-row" },
+        { class: "int-row stagger", style: `--i:${i}` },
         dot("#C9956A", 4),
         h("span", { class: "int-time", text: `${day} ${time}` }),
         h("span", { class: "int-name", text: String(b.title ?? "Meeting") }),
       ),
     );
-  }
+  });
   return h("div", { class: "int-card" }, header("#C9956A", "Cal.com", "Schedule"), rows);
 }
 

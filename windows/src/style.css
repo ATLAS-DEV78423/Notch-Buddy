@@ -299,7 +299,7 @@ body {
   opacity: 0;
   transform: scale(0.97);
   pointer-events: none;
-  transition: opacity 0.16s ease-in;
+  transition: opacity 0.16s ease-in, transform 0.16s ease-in;
   contain: layout style;
 }
 
@@ -307,7 +307,27 @@ body {
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
-  transition: opacity 0.3s ease-out 0.16s, transform 0.3s cubic-bezier(0.3, 1.2, 0.4, 1) 0.16s;
+  /* Incoming starts at 120 ms — overlapping the 160 ms outgoing fade, so the
+     handoff is continuous instead of blinking through a blank frame. */
+  transition: opacity 0.3s ease-out 0.12s, transform 0.3s cubic-bezier(0.3, 1.2, 0.4, 1) 0.12s;
+}
+
+/* Staggered row enter — SPEC §4: 35 ms per item. Rows opt in with
+   class="stagger" and an inline style="--i:N" index. */
+.view.on .stagger {
+  animation: row-in 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  animation-delay: calc(120ms + var(--i, 0) * 35ms);
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* A view that is not on is only transparent, not gone: an infinite animation

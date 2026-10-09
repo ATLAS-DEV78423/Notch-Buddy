@@ -553,7 +553,7 @@ function buildPlaceholder(title: string, sub: string): ViewHost {
 // ── New view stubs (filled in by later tasks) ────────────────────────────────
 
 function buildDashboardView(): ViewHost {
-  const mediaWidget = h("div", { class: "widget", onclick: () => State.setView("media") },
+  const mediaWidget = h("div", { class: "widget stagger", style: "--i:0", onclick: () => State.setView("media") },
     h("div", { class: "widget-title" }, "Media"));
   const mediaBody = h("div", { class: "widget-media" });
   const mediaEmpty = h("div", { class: "widget-empty" }, "No media playing");
@@ -562,28 +562,28 @@ function buildDashboardView(): ViewHost {
   const mediaText = h("div");
   mediaBody.append(art, mediaText);
 
-  const statsWidget = h("div", { class: "widget", onclick: () => State.setView("stats") },
+  const statsWidget = h("div", { class: "widget stagger", style: "--i:1", onclick: () => State.setView("stats") },
     h("div", { class: "widget-title" }, "Stats"));
   const statsValue = h("div", { class: "widget-value" });
   statsWidget.append(statsValue);
 
-  const timerWidget = h("div", { class: "widget", onclick: () => State.setView(State.timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
+  const timerWidget = h("div", { class: "widget stagger", style: "--i:2", onclick: () => State.setView(State.timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
     h("div", { class: "widget-title" }, "Timer"));
   const timerValue = h("div", { class: "widget-value" });
   timerWidget.append(timerValue);
 
-  const weatherWidget = h("div", { class: "widget", onclick: () => State.setView("weather") },
+  const weatherWidget = h("div", { class: "widget stagger", style: "--i:3", onclick: () => State.setView("weather") },
     h("div", { class: "widget-title" }, "Weather"));
   const weatherValue = h("div", { class: "widget-value" });
   const weatherEmpty = h("div", { class: "widget-empty" });
   weatherWidget.append(weatherValue, weatherEmpty);
 
-  const batteryWidget = h("div", { class: "widget", onclick: () => State.setView("controlCenter") },
+  const batteryWidget = h("div", { class: "widget stagger", style: "--i:4", onclick: () => State.setView("controlCenter") },
     h("div", { class: "widget-title" }, "Battery"));
   const batteryValue = h("div", { class: "widget-value" });
   batteryWidget.append(batteryValue);
 
-  const btWidget = h("div", { class: "widget", onclick: () => State.setView("bluetooth") },
+  const btWidget = h("div", { class: "widget stagger", style: "--i:5", onclick: () => State.setView("bluetooth") },
     h("div", { class: "widget-title" }, "Bluetooth"));
   const btValue = h("div", { class: "widget-value" });
   const btEmpty = h("div", { class: "widget-empty" }, "No devices");
@@ -870,12 +870,12 @@ async function seedBluetooth() {
 function renderBluetoothView(): HTMLElement {
   const devices = State.bluetooth.devices;
   const connected = devices.filter((d) => d.connected).length;
-  const rows = devices.map((d) => {
+  const rows = devices.map((d, i) => {
     const pending = btPending === d.name;
     const busy = btPending !== "" && !pending;
     return h(
       "div",
-      { class: `bt-device${d.connected ? " on" : ""}` },
+      { class: `bt-device stagger${d.connected ? " on" : ""}`, style: `--i:${i}` },
       h("span", { class: "bt-icon", text: BT_ICONS[d.type] ?? "•" }),
       h("span", { class: "bt-name", text: d.name }),
       d.battery >= 0 ? h("span", { class: "bt-battery", text: `${d.battery}%` }) : null,
@@ -931,22 +931,22 @@ function buildStatsView(): ViewHost {
     if (bps < 1024 * 1024 * 1024) return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
     return `${(bps / (1024 * 1024 * 1024)).toFixed(1)} GB/s`;
   };
-  const row = (label: string) => {
+  const row = (label: string, i: number) => {
     const fill = h("div", { class: "stat-fill" });
     const value = h("span", { class: "stat-value" });
     return {
       fill,
       value,
-      el: h("div", { class: "stat-row" },
+      el: h("div", { class: "stat-row stagger", style: `--i:${i}` },
         h("span", { class: "stat-label" }, label),
         h("div", { class: "stat-bar" }, fill),
         value),
     };
   };
-  const cpu = row("CPU");
-  const ram = row("RAM");
-  const rx = row("Net ↓");
-  const tx = row("Net ↑");
+  const cpu = row("CPU", 0);
+  const ram = row("RAM", 1);
+  const rx = row("Net ↓", 2);
+  const tx = row("Net ↑", 3);
   return {
     el: h("div", { class: "view" },
       h("div", { class: "view-stats" }, cpu.el, ram.el, rx.el, tx.el)),
@@ -1033,7 +1033,7 @@ function buildPomodoroView(): ViewHost {
         list.append(
           h(
             "div",
-            { class: task.done ? "task done" : "task" },
+            { class: `${task.done ? "task done" : "task"} stagger`, style: `--i:${i}` },
             h("input", {
               type: "checkbox",
               checked: task.done,
