@@ -976,6 +976,10 @@ export class Island {
     this.header.sync();
     for (const [name, view] of this.views) {
       const on = name === State.view;
+      // Task 6 exit seam: the outgoing view keeps a short view-out before it
+      // drops back to the base .view state (asymmetric enter/exit).
+      if (on) view.el.classList.remove("view-leaving");
+      else if (view.el.classList.contains("on")) this.leaveView(view.el);
       view.el.classList.toggle("on", on);
       if (on) view.sync();
     }
@@ -1021,6 +1025,18 @@ export class Island {
       State.reactionEmote = null;
     }
     this.engine.setState(State.effectiveState);
+  }
+
+  /** Task 6: runs the outgoing view's view-out, then drops the class. Filtered
+   *  by animation name so a child animation's end can't cut the exit short. */
+  private leaveView(el: HTMLElement) {
+    el.classList.add("view-leaving");
+    const done = (e: AnimationEvent) => {
+      if (e.animationName !== "view-out") return;
+      el.removeEventListener("animationend", done);
+      el.classList.remove("view-leaving");
+    };
+    el.addEventListener("animationend", done);
   }
 
   /** Applies settings coming from Rust at boot. */

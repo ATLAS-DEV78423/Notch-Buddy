@@ -39,11 +39,11 @@ function makeRow(): Row {
   check.style.color = "#454850"; // the completed tick is dimmer than the chevron
   check.style.position = "absolute";
   chevron.style.position = "absolute";
-  const shimmer = h("span", { class: "tick-text shimmer" });
+  const shimmer = h("span", { class: "tick-text shimmer" }, h("span", { class: "mq" }));
   const dim = h("span", {
     class: "tick-text",
     style: "position:absolute;left:0;right:0;color:#6b7079",
-  });
+  }, h("span", { class: "mq" }));
   const el = h(
     "div",
     { class: "ticker-row" },
@@ -56,8 +56,26 @@ function makeRow(): Row {
 function setText(row: Row, text: string) {
   if (row.text === text) return;
   row.text = text;
-  row.shimmer.textContent = text;
-  row.dim.textContent = text;
+  (row.shimmer.firstElementChild as HTMLElement).textContent = text;
+  (row.dim.firstElementChild as HTMLElement).textContent = text;
+  mountMarquee(row, text);
+}
+
+/**
+ * Task 6 marquee: a row whose text overflows its box scrolls left↔right with
+ * holds (ping-pong, no jump). The overflow distance and the duration are
+ * written as custom properties; the CSS animation reads them. Cleared when the
+ * text fits. Re-measured on text change and on resize (one observer per Ticker).
+ */
+function mountMarquee(row: Row, text: string) {
+  const dist = text ? row.shimmer.scrollWidth - row.shimmer.clientWidth : 0;
+  if (dist <= 1) {
+    row.el.classList.remove("marquee-on");
+    return;
+  }
+  row.el.classList.add("marquee-on");
+  row.el.style.setProperty("--mq-distance", `${dist}px`);
+  row.el.style.setProperty("--mq-duration", `${Math.max(dist / 30, 5)}s`);
 }
 
 /**
@@ -119,6 +137,13 @@ export class Ticker {
     this.el = h("div", { class: "ticker" }, this.a.el, this.b.el, this.c.el);
     Ticker.current = this;
     this.rest();
+    // One observer per ticker: re-measure marquees when the row width changes
+    // (the island resizes on every view switch / expand). Kept alive by its
+    // observation, so no field is needed.
+    new ResizeObserver(() => {
+      mountMarquee(this.a, this.a.text);
+      mountMarquee(this.c, this.c.text);
+    }).observe(this.el);
   }
 
   static get animating(): boolean {

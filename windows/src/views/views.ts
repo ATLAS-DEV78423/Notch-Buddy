@@ -12,6 +12,7 @@ import { createSwipeToast, type SwipeToast } from "../ui/swipetoast";
 import { attachTabSegment } from "../ui/tabsegment";
 import { createSwipeRow } from "../ui/swiperow";
 import { Bridge } from "../core/bridge";
+import { prefersReduced } from "../core/anim";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
@@ -1073,11 +1074,43 @@ function buildStatsView(): ViewHost {
 
 const pad2 = (n: number) => String(Math.floor(n)).padStart(2, "0");
 
+/** Per-character odometer for the pomodoro countdown (Task 6). Slots are keyed
+ *  from the right, so the seconds' ones-digit is always the rightmost; only the
+ *  characters that actually changed animate (roll-out / roll-in, 400 ms). */
+function rollDigits(host: HTMLElement, text: string) {
+  const chars = [...text];
+  const n = chars.length;
+  const slots = Array.from(host.children) as HTMLElement[];
+  // A width change (first paint, or minutes going 99 → 100): rebuild plainly.
+  if (slots.length !== n) {
+    clear(host);
+    for (const ch of chars) host.append(h("span", { class: "pom-digit", text: ch }));
+    return;
+  }
+  const reduce = prefersReduced();
+  for (let i = n - 1; i >= 0; i--) {
+    const slot = slots[i];
+    const ch = chars[i];
+    const cur = slot.dataset.ch ?? slot.textContent ?? "";
+    if (cur === ch) continue;
+    slot.dataset.ch = ch;
+    if (reduce) {
+      slot.textContent = ch; // reduced motion: swap instantly, no spans
+      continue;
+    }
+    slot.replaceChildren(
+      h("span", { class: "pom-out", text: cur }),
+      h("span", { class: "pom-in", text: ch }),
+    );
+  }
+}
+
 /** Stable hosts (not liveView): the task input must survive the 1 Hz tick. */
 function buildPomodoroView(): ViewHost {
   const segFocus = h("button", { text: "Focus", onclick: () => State.timerSetMode("focus") });
   const segBreak = h("button", { text: "Break", onclick: () => State.timerSetMode("break") });
-  const display = h("div", { class: "timer-display" });
+  const roll = h("span", { class: "pom-roll" });
+  const display = h("div", { class: "timer-display" }, roll);
   const startPause = btn("Start", "primary", () => State.timerToggle());
   const startLabel = startPause.querySelector("span") as HTMLElement;
   const resetBtn = btn("Reset", "secondary", () => State.timerReset());
@@ -1178,7 +1211,7 @@ function buildPomodoroView(): ViewHost {
       const t = State.timer;
       // The stopwatch owns the machine while that view is up.
       if (t.mode === "stopwatch") State.timerSetMode("focus");
-      display.textContent = `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`;
+      rollDigits(roll, `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`);
       segFocus.classList.toggle("on", t.mode === "focus");
       segBreak.classList.toggle("on", t.mode === "break");
       startLabel.textContent = t.running ? "Pause" : "Start";
