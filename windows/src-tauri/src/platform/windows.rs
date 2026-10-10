@@ -11,8 +11,11 @@ use ::windows::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, HWND, LPARAM, Lo
 use ::windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use ::windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
 use ::windows::Win32::System::Ole::RevokeDragDrop;
+use ::windows::Win32::System::Pipes::GetNamedPipeClientProcessId;
 use ::windows::Win32::System::SystemInformation::GetLocalTime;
-use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use ::windows::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use ::windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, GetClassNameW, GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW,
@@ -107,42 +110,71 @@ pub fn find_on_path(stem: &str) -> Option<PathBuf> {
 // Named pipes share one machine-wide namespace, so the SID in the name is what
 // keeps two accounts on the same machine from ever meeting on `coucou-*`.
 // coucou-hook computes the same string (hook/src/win.rs) and additionally checks
-// that the process serving the pipe really is us.
+// that the process serving the pipe really is us; the relay server here checks
+// the mirror — that the client connecting to it is us (pipe.rs).
 
 /// The SID of the account this process runs as, as `S-1-5-21-…`.
 pub fn current_user_sid() -> Option<String> {
+    unsafe { token_sid(GetCurrentProcess()) }
+}
+
+/// True when the process connected to `handle` runs as the same user we do.
+///
+/// The mirror of coucou-hook's `pipe_server_is_same_user` (hook/src/win.rs),
+/// reading the *client* end: named pipes share one machine-wide namespace, so
+/// without this another process of ours could connect to `coucou-<sid>` and
+/// inject forged hook / permission events.
+///
+/// A failure to answer is treated as "not ours": refusing one relay connection
+/// costs a hook event, while trusting it could hand another account our tool calls.
+pub fn pipe_client_is_same_user(handle: HANDLE) -> bool {
+    let Some(mine) = current_user_sid() else { return false };
     unsafe {
-        let mut token = HANDLE::default();
-        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).ok()?;
-
-        // First call sizes the buffer, second fills it.
-        let mut needed = 0u32;
-        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
-        if needed == 0 {
-            let _ = CloseHandle(token);
-            return None;
+        let mut pid = 0u32;
+        if GetNamedPipeClientProcessId(handle, &mut pid).is_err() || pid == 0 {
+            return false;
         }
-        let mut buf = vec![0u8; needed as usize];
-        let ok = GetTokenInformation(
-            token,
-            TokenUser,
-            Some(buf.as_mut_ptr().cast()),
-            needed,
-            &mut needed,
-        )
-        .is_ok();
-        let _ = CloseHandle(token);
-        if !ok {
-            return None;
-        }
-
-        let user = &*(buf.as_ptr() as *const TOKEN_USER);
-        let mut text = PWSTR::null();
-        ConvertSidToStringSidW(user.User.Sid, &mut text).ok()?;
-        let sid = text.to_string().ok();
-        let _ = LocalFree(Some(HLOCAL(text.0 as *mut _)));
-        sid
+        let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return false;
+        };
+        let theirs = token_sid(process);
+        let _ = CloseHandle(process);
+        theirs.as_deref() == Some(mine.as_str())
     }
+}
+
+/// The user SID behind a process handle. `process` is borrowed, never closed.
+unsafe fn token_sid(process: HANDLE) -> Option<String> {
+    let mut token = HANDLE::default();
+    OpenProcessToken(process, TOKEN_QUERY, &mut token).ok()?;
+
+    // First call sizes the buffer, second fills it.
+    let mut needed = 0u32;
+    let _ = GetTokenInformation(token, TokenUser, None, 0, &mut needed);
+    if needed == 0 {
+        let _ = CloseHandle(token);
+        return None;
+    }
+    let mut buf = vec![0u8; needed as usize];
+    let ok = GetTokenInformation(
+        token,
+        TokenUser,
+        Some(buf.as_mut_ptr().cast()),
+        needed,
+        &mut needed,
+    )
+    .is_ok();
+    let _ = CloseHandle(token);
+    if !ok {
+        return None;
+    }
+
+    let user = &*(buf.as_ptr() as *const TOKEN_USER);
+    let mut text = PWSTR::null();
+    ConvertSidToStringSidW(user.User.Sid, &mut text).ok()?;
+    let sid = text.to_string().ok();
+    let _ = LocalFree(Some(HLOCAL(text.0 as *mut _)));
+    sid
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────

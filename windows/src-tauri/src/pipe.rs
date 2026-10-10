@@ -84,6 +84,17 @@ pub fn start(app: AppHandle) {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 continue;
             }
+            // Only the relay run by our own user may drive the island. The pipe
+            // name carries our SID, but any process of ours could still reach it.
+            {
+                use std::os::windows::io::AsRawHandle;
+                let handle = ::windows::Win32::Foundation::HANDLE(server.as_raw_handle());
+                if !crate::platform::pipe_client_is_same_user(handle) {
+                    log::line("refused a relay connection from another user");
+                    let _ = server.disconnect();
+                    continue;
+                }
+            }
             // Hand the connected instance to a task and listen on a fresh one.
             let next = match ServerOptions::new().create(&name) {
                 Ok(s) => s,
@@ -294,4 +305,43 @@ pub fn answer(app: &AppHandle, request_id: &str, decision: &str) {
     };
     log::line(format!("decision id={request_id} {word}"));
     send(app, request_id, Reply::Decision(word.to_string()), false);
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use std::os::windows::io::AsRawHandle;
+
+    use ::windows::Win32::Foundation::HANDLE;
+
+    /// The check has to accept every real hook event — a legitimate client from
+    /// our own process must pass, or the app's core function breaks silently.
+    #[test]
+    fn same_user_client_is_accepted() {
+        let name = format!(r"\\.\pipe\coucou-test-{}", std::process::id());
+        tauri::async_runtime::block_on(async move {
+            // `create` registers the pipe with the reactor, so it belongs inside
+            // the runtime just like it does in `start`.
+            let server = ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(&name)
+                .expect("create pipe");
+
+            // Opening the client blocks until the server is listening, so it runs
+            // on its own thread rather than on the runtime that drives `connect`.
+            let client = std::thread::spawn({
+                let name = name.clone();
+                move || std::fs::OpenOptions::new().read(true).write(true).open(&name)
+            });
+            server.connect().await.expect("server connect");
+
+            let client = client.join().expect("client thread").expect("open pipe");
+            let handle = HANDLE(server.as_raw_handle());
+            assert!(
+                crate::platform::pipe_client_is_same_user(handle),
+                "a connection from our own process must be accepted"
+            );
+            drop(client);
+        });
+    }
 }
