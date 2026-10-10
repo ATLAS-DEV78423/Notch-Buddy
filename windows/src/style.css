@@ -504,12 +504,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.who .tool {
-  font: 400 11px var(--font);
-  color: var(--dim-2);
-  white-space: nowrap;
-}
-
 .who .count {
   font: 400 11px var(--font);
   color: var(--dim-3);
@@ -590,6 +584,280 @@ body {
   to {
     background-position: -130% 0;
   }
+}
+
+/* ── React Bits port: ThoughtLine ─────────────────────────────────────────────
+   The working line of the overview's who-row. The breath, the shimmer (the
+   existing .shimmer sweep) and the settle chord are CSS; the clock is driven by
+   the host view's frame tick — see ui/thoughtline.ts. Geometry is unchanged:
+   the line sits inside the existing who row, at the who row's type size. */
+
+.thought-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  /* The line, not the agent name or the step count, absorbs a narrow card: it
+     ellipsises rather than colliding with the count pushed right by auto. */
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 500 12px var(--font);
+  color: var(--dim-2);
+}
+
+.thought-line__glyph {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  width: 11px;
+  height: 11px;
+  color: var(--dim-3);
+}
+
+.thought-line__glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* One breath, up and down — the reference's 1.6 s / ease-in-out pair. */
+.thought-line[data-working] .thought-line__glyph {
+  animation: tl-breath 1.6s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+}
+
+@keyframes tl-breath {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thought-line__label {
+  display: inline-grid;
+  /* min(0) on the track is what lets the stacked texts shrink below their
+     max-content width; a plain grid track refuses and overflows instead. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Working and settled share a cell: the crossfade is the settle chord. */
+.thought-line__text {
+  grid-area: 1 / 1;
+  min-width: 0;
+  max-width: 210px;
+  opacity: 0;
+  filter: blur(2px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    opacity 350ms cubic-bezier(0.23, 1, 0.32, 1),
+    filter 350ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.thought-line__text[data-active] {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.thought-line__text--done[data-active] {
+  opacity: 0.75;
+}
+
+/* The live clock: only while working — the settled sentence carries the time. */
+.thought-line__timer {
+  font: 400 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+
+.thought-line[data-working] .thought-line__timer {
+  opacity: 0.55;
+}
+
+.thought-line__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── React Bits port: SpringCheck ─────────────────────────────────────────────
+   The pomodoro task control. The reference's readings — fill `scale(t)`, box
+   swell `1 + 0.35·max(0, t−1)`, tick `1−t`, words toward 0.42, rule
+   `(t − lag)/(0.84 − lag)` — are expressed as CSS on one `data-on` attribute
+   rather than a `motion` spring, because no per-view clock exists to step one.
+   The swell is its own keyframe so it can be restarted by re-adding
+   `data-swell`, exactly like the reference's `animate(t, target)`. */
+
+.spring-check {
+  --sc-box: 15px;
+  --sc-radius: 5px;
+  --sc-ring: 1.6px;
+  --sc-done: 0.45;
+  /* One rebound, the reference's `bounce: 0.2` read as a curve. */
+  --sc-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --sc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spring-check__press {
+  flex: none;
+  width: var(--sc-box);
+  height: var(--sc-box);
+  border-radius: var(--sc-radius);
+  transition: transform 160ms var(--sc-ease-out);
+}
+
+.spring-check[data-pressed] .spring-check__press {
+  transform: scale(0.9);
+}
+
+.spring-check:focus-visible .spring-check__press {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 2px;
+}
+
+.spring-check__box {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.spring-check__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 var(--sc-ring) currentColor;
+  opacity: 0.3;
+  transition: opacity 120ms ease;
+}
+
+.spring-check:hover .spring-check__ring {
+  opacity: 0.5;
+}
+
+.spring-check__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scale(0);
+  transform-origin: center;
+}
+
+.spring-check__tick {
+  position: relative;
+  width: 68%;
+  height: 68%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--card-flat);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+/* Staggered exactly like the reference: the tick waits for the fill to arrive. */
+.spring-check[data-ready] .spring-check__fill {
+  transition: transform 320ms var(--sc-ease);
+}
+
+.spring-check[data-ready] .spring-check__tick {
+  transition: stroke-dashoffset 220ms var(--sc-ease-out) 70ms;
+}
+
+.spring-check[data-on] .spring-check__fill {
+  transform: scale(1);
+}
+
+.spring-check[data-on] .spring-check__tick {
+  stroke-dashoffset: 0;
+}
+
+.spring-check__label {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.spring-check__word {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 320ms var(--sc-ease-out);
+}
+
+.spring-check[data-on] .spring-check__word {
+  opacity: var(--sc-done);
+}
+
+/* The strike is drawn, not inherited — it wipes the label's exact width. */
+.spring-check__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  margin-top: -0.75px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.spring-check[data-ready] .spring-check__rule {
+  transition: transform 260ms var(--sc-ease-out) 90ms;
+}
+
+.spring-check[data-on] .spring-check__rule {
+  transform: scaleX(1);
+}
+
+@keyframes sc-swell {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.32);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.spring-check[data-swell] .spring-check__box {
+  animation: sc-swell 360ms var(--sc-ease-out);
 }
 
 /* ── Agent pills ────────────────────────────────────────────────────────── */
@@ -750,36 +1018,85 @@ body {
   color: #c5c8cd;
 }
 
+/* ── React Bits port: SquishSwitch ────────────────────────────────────────────
+   The same track, the same 14 px thumb, the same 0.18 s settle — but the thumb
+   is now an element that stretches with the speed of its own travel and can be
+   dragged (ui/squishswitch.ts). Geometry moves into `--sw-*` so the same module
+   can drive the settings window's 36×20 track without knowing which it has. */
+
 .switch {
+  --sw-w: 32px;
+  --sw-h: 18px;
+  --sw-inset: 2px;
+  --sw-thumb: 14px;
+  --sw-travel: 14px;
+
   position: relative;
-  width: 32px;
-  height: 18px;
-  border-radius: 9px;
+  display: block;
+  width: var(--sw-w);
+  height: var(--sw-h);
+  border-radius: calc(var(--sw-h) / 2);
   background: rgba(255, 255, 255, 0.15);
-  flex: 0 0 32px;
+  flex: 0 0 var(--sw-w);
   transition: background 0.18s;
-  cursor: default;
+  cursor: pointer;
   border: 0;
+  padding: 0;
+  touch-action: pan-y;
 }
 
 .switch.on {
   background: var(--green);
 }
 
-.switch::after {
-  content: "";
+.switch__thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform 0.18s;
+  top: var(--sw-inset);
+  left: var(--sw-inset);
+  width: var(--sw-thumb);
+  height: var(--sw-thumb);
+  transform: translateX(0);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.switch.on::after {
-  transform: translateX(14px);
+.switch.on .switch__thumb {
+  transform: translateX(var(--sw-travel));
+}
+
+/* Mid-drag the finger owns the position: no transition, no rounding to the ends. */
+.switch[data-held] .switch__thumb {
+  transform: translateX(var(--sw-x, 0px));
+  transition: none;
+}
+
+.switch__thumb-in {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  transform: scaleX(var(--sw-sx, 1)) scaleY(var(--sw-sy, 1));
+  transform-origin: center;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.switch[data-held] .switch__thumb-in {
+  transition: none;
+}
+
+/* A tap never had a velocity, so it gets one swell instead. */
+.switch[data-squish] .switch__thumb-in {
+  animation: sw-squish 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes sw-squish {
+  0%,
+  100% {
+    transform: scaleX(1) scaleY(1);
+  }
+  35% {
+    transform: scaleX(1.26) scaleY(0.82);
+  }
 }
 
 input[type="range"] {
@@ -852,17 +1169,21 @@ input[type="range"]::-webkit-slider-thumb {
   z-index: 5;
 }
 .banner {
+  position: relative;     /* the fuse burns along the pill's own edge */
   display: flex;
   align-items: center;
   gap: 10px;
   background: #252830;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
+  overflow: hidden;       /* …and is clipped by it */
   padding: 6px 8px 6px 14px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   font: 500 12px var(--font);
   color: var(--ink);
   max-width: 520px;
+  transform: translateY(var(--toast-y, 0px));
+  transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1), opacity 220ms ease;
 }
 .banner-text { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .banner-open {
@@ -884,6 +1205,166 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 2px 4px;
 }
 .banner-close:hover { color: var(--ink); }
+
+/* ── React Bits port: SwipeToast (the banner's fuse, swipe and exit chord) ─── */
+
+/* The card tracks the finger 1:1; an abandoned swipe gets the overshoot back on
+   release, and a departure is the card leaving the island's top edge. */
+.banner[data-swiping] { transition: none; }
+.banner[data-returning] {
+  transition: transform 300ms cubic-bezier(0.34, 1.45, 0.5, 1), opacity 220ms ease;
+}
+.banner[data-leaving="up"] { transform: translateY(-170%); opacity: 0; }
+.banner[data-leaving="down"] { transform: translateY(240%); opacity: 0; }
+
+/* The fuse IS the time-to-live: its animation is exactly as long as the banner
+   has left, and freezing it under the pointer freezes the deadline too
+   (`State.pauseBanner`), so the line cannot disagree with the dismissal. */
+.banner-fuse {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--amber) 14%,
+    var(--amber) 86%,
+    transparent 100%
+  );
+  transform-origin: left center;
+  pointer-events: none;
+  animation: banner-fuse var(--fuse-duration, 6000ms) linear forwards;
+}
+@keyframes banner-fuse {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.banner[data-frozen] .banner-fuse { animation-play-state: paused; }
+
+/* ── React Bits port: CallChip (the overview's current step) ─────────────────
+   Row B of the ticker is a chip: a fill wipe over the nominal step time, a live
+   ms readout, a green wash + tick on done and a frozen red wash + shake on
+   error. JS side: ui/callchip.ts, driven by the ticker's own frame tick — no
+   timers, no second rAF loop. */
+
+.call-chip {
+  --cc-size: 22px;
+  --cc-font: 12px;
+  --cc-pad: 8px;
+  --cc-gap: 5px;
+  --cc-radius: 8px;
+  --cc-expected: 2500ms;
+  --cc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cc-gap);
+  height: var(--cc-size);
+  padding: 0 var(--cc-pad);
+  border-radius: var(--cc-radius);
+  overflow: hidden;
+  background: var(--tab-on);
+  color: var(--ink);
+  font: 500 var(--cc-font) var(--font);
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 100%;
+  user-select: none;
+}
+.call-chip__fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+  background: rgba(245, 246, 248, 0.08); /* ink at the reference's 8% — no color-mix */
+  clip-path: inset(0 0 0 0);
+}
+.call-chip[data-status="running"] .call-chip__fill {
+  transition: transform var(--cc-expected) linear;
+}
+.call-chip[data-status="done"] .call-chip__fill {
+  background: var(--wash-ok);
+  clip-path: inset(100% 0 0 0);
+  transition:
+    transform 200ms var(--cc-ease-out),
+    background-color 120ms ease,
+    clip-path 400ms var(--cc-ease-out) 200ms;
+}
+.call-chip[data-status="error"] .call-chip__fill {
+  background: var(--wash-err);
+  transition: background-color 200ms ease;
+}
+.call-chip__slot {
+  position: relative;
+  flex: none;
+  width: calc(var(--cc-font) + 2px);
+  height: calc(var(--cc-font) + 2px);
+  overflow: hidden;
+}
+.call-chip__glyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: translateY(70%);
+  filter: blur(3px);
+}
+.call-chip__glyph[data-state="in"] {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+  transition:
+    opacity 240ms var(--cc-ease-out),
+    transform 240ms var(--cc-ease-out),
+    filter 240ms var(--cc-ease-out);
+}
+.call-chip__glyph[data-state="out"] {
+  transform: translateY(-70%);
+  transition:
+    opacity 160ms var(--cc-ease-out),
+    transform 160ms var(--cc-ease-out),
+    filter 160ms var(--cc-ease-out);
+}
+.call-chip[data-status="done"] .call-chip__glyph[data-state="in"] { color: var(--green); }
+.call-chip[data-status="error"] .call-chip__glyph[data-state="in"] { color: var(--red); }
+.call-chip__text {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.call-chip__timer {
+  position: relative;
+  flex: none;
+  min-width: 6ch;
+  text-align: right;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+.call-chip__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-chip[data-status="done"] .call-chip__fill {
+    clip-path: inset(0 0 0 0);
+    transition: background-color 120ms ease;
+  }
+  .call-chip__glyph {
+    transform: none !important;
+    filter: none !important;
+  }
+}
 
 /* ── Media player ───────────────────────────────────────────────────────── */
 
@@ -919,7 +1400,7 @@ input[type="range"]::-webkit-slider-thumb {
 .cc-icon-btn { background: none; border: none; padding: 2px; cursor: pointer; font-size: 14px; line-height: 1; }
 .cc-toggle { background: var(--tab-on); border: none; border-radius: 8px; padding: 6px 10px; color: var(--dim-2); cursor: pointer; font: 600 11.5px var(--font); }
 .cc-toggle:hover { background: #252830; }
-.cc-toggle.on { background: rgba(59, 158, 255, 0.18); color: var(--accent); }
+.cc-toggle.on { background: var(--accent-soft); color: var(--accent); }
 .cc-note { font-size: 11px; color: var(--dim-2); min-width: 72px; }
 
 /* ── Bluetooth ────────────────────────────────────────────────────────────── */
@@ -962,9 +1443,10 @@ input[type="range"]::-webkit-slider-thumb {
 .task-input::placeholder { color: var(--dim-2); }
 .task-list { width: 100%; max-height: 64px; overflow-y: auto; text-align: left; content-visibility: auto; }
 .task { display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 12px; color: var(--ink); }
-.task span { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task.done span { text-decoration: line-through; color: var(--dim-2); }
-.task input[type="checkbox"] { flex: none; accent-color: var(--accent); }
+/* The SpringCheck carries the label, the tick and the strike; the row only
+   dims their ink once the task is done. */
+.task.done { color: var(--dim-2); }
+.task .spring-check { flex: 1 1 auto; min-width: 0; }
 .task-del { flex: none; background: none; border: 0; padding: 0 2px; color: var(--dim-2); cursor: pointer; font-size: 13px; line-height: 1; }
 .task-del:hover { color: var(--ink); }
 
@@ -1626,5 +2108,21 @@ input[type="range"]::-webkit-slider-thumb {
 
   .view.on .stagger {
     animation: none !important;
+  }
+
+  /* ThoughtLine: no breath and no seam blur — the crossfade alone carries it. */
+  .thought-line[data-working] .thought-line__glyph {
+    animation: none !important;
+    opacity: 0.8;
+  }
+
+  .thought-line__text {
+    filter: none !important;
+  }
+
+  /* The fuse is a countdown, not decoration: collapsed to 0.01 ms it would read
+     as "no time left at all". Hide it — the banner still leaves on schedule. */
+  .banner-fuse {
+    display: none;
   }
 }

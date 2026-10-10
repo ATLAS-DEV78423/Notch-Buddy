@@ -19,9 +19,12 @@
   --red-text: #ff8d97;
   --green: #22c55e;
   --green-2: #34d399;
+  --wash-ok: rgba(34, 197, 94, 0.14);    /* --green at the reference's 14% wash */
+  --wash-err: rgba(244, 80, 94, 0.14);   /* --red at 14% */
   --amber: #f5a524;
   --cyan: #22d3ee;
   --indigo: #6366f1;
   --pink: #f472b6;
   --accent: #3b9eff;     /* single source for the accent colour (settings picker) */
+  --accent-soft: rgba(59, 158, 255, 0.18);  /* the accent as a wash (.cc-toggle.on) */
 }
