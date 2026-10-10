@@ -63,6 +63,53 @@ installs, and is deliberately out of scope here. Until it is done, the README do
 filenames the build actually produces.
 
 
+## Third-party acknowledgements
+
+Beyond the original Coucou project, this fork builds on other open-source work. Their
+licences and copyright remain with their authors; the notices below are the record of what
+was used and how.
+
+### React Bits — MIT + Commons Clause
+
+Six micro-interactions on the Windows island are ports of **React Bits** components,
+re-implemented in this app's own TypeScript — no React, no `motion`, no hugeicons. The six
+are **ThoughtLine**, **CallChip**, **SpringCheck**, **SquishSwitch**, **SwipeToast** and
+**SwipeRow**; they live in `windows/src/ui/`.
+
+| | |
+|---|---|
+| Project | React Bits — <https://reactbits.dev> · <https://github.com/DavidHDev/react-bits> |
+| Author | David Haz — © 2026 David Haz |
+| Licence | MIT + Commons Clause License Condition v1.0 (full text in the upstream repository's `LICENSE.md`) |
+
+### bloom — GPLv3
+
+The Windows island's reactive-motion system — per-property, interruptible springs for the
+island shell, and the Mochi reaction bus — was **inspired by** bloom. This is a
+re-implementation of the motion *behaviour* (the "mechanical" per-property feel and the
+roll-digit countdown), not a copy of bloom's source: the spring integrator in
+`windows/src/core/spring.ts` is a small hand-rolled semi-implicit Euler integrator written
+for this project, and no bloom code is included.
+
+| | |
+|---|---|
+| Project | bloom — <https://github.com/SehajveerSingh2005/bloom> |
+| Author | Sehajveer Singh (SehajveerSingh2005) |
+| Licence | GPLv3 (upstream `LICENSE`) |
+
+### Libraries
+
+The Windows and Linux app is a [Tauri 2](https://tauri.app) application (Rust backend,
+TypeScript front end). Notable open-source dependencies a user would care about:
+
+- [Tauri 2](https://tauri.app) and its single-instance and autostart plugins
+- [Vite](https://vitejs.dev) and [TypeScript](https://www.typescriptlang.org/) (front-end toolchain)
+- [Tokio](https://tokio.rs), [Reqwest](https://github.com/seanmonstar/reqwest), [Serde](https://serde.rs), the [keyring](https://github.com/hwchen/keyring-rs) crate and the [`windows`](https://github.com/microsoft/windows-rs) crate (Rust backend)
+
+The macOS app (`NotchBuddy/`) has no third-party dependencies. The stateless relay in
+`relay/` is built for the Cloudflare Workers runtime with Wrangler.
+
+
 ## Contact
 
 This fork: ATLAS-DEV78423.

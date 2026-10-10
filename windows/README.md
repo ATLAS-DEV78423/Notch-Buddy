@@ -223,3 +223,20 @@ What changes on Linux:
 - What the Windows build leaves out, this one does too: sending a file by
   email, dragging Pip onto a window, and jumping to a specific terminal
   window — "Open terminal" opens the folder in VS Code.
+
+## Credits
+
+The Windows and Linux build is a [Tauri 2](https://tauri.app) app (Rust + WebView2)
+with a [Vite](https://vitejs.dev) + [TypeScript](https://www.typescriptlang.org/)
+front end.
+
+Two open-source projects shaped the island's look and feel, and both are credited
+in full in [../NOTICE.md](../NOTICE.md):
+
+- **React Bits** ([reactbits.dev](https://reactbits.dev), [DavidHDev/react-bits](https://github.com/DavidHDev/react-bits)) —
+  six micro-interactions were ported into this app's own TypeScript in `src/ui/`:
+  ThoughtLine, CallChip, SpringCheck, SquishSwitch, SwipeToast and SwipeRow.
+- **bloom** ([SehajveerSingh2005/bloom](https://github.com/SehajveerSingh2005/bloom)) —
+  the reactive-motion *feel* of the island shell and Mochi (per-property,
+  interruptible springs) was inspired by bloom. The spring integrator here is a
+  small hand-rolled reimplementation, not bloom's code.

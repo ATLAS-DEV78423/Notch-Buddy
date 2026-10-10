@@ -316,6 +316,14 @@ Built by Louis Raillé with Claude Code.
 Forked and rebranded as Notch-Buddy by ATLAS-DEV78423.
 Inspired by the notch-companion concepts shared by design studios — this project is independent and not affiliated with any of them.
 
+This project also stands on open-source work that shaped what you can see and feel:
+
+- **[React Bits](https://reactbits.dev)** by David Haz ([DavidHDev/react-bits](https://github.com/DavidHDev/react-bits)) — six of its micro-interactions live on the Windows island. ThoughtLine, CallChip, SpringCheck, SquishSwitch, SwipeToast and SwipeRow were ported into this app's own TypeScript (no React, no `motion`, no hugeicons). React Bits is licensed MIT + Commons Clause.
+- **[bloom](https://github.com/SehajveerSingh2005/bloom)** by Sehajveer Singh — the Windows island's reactive-motion *feel* (per-property, interruptible springs for the shell, and the roll-digit countdown) was inspired by bloom. No bloom code is copied: the spring integrator is a small hand-rolled implementation written for this app.
+- **Libraries** — the Windows and Linux app is a [Tauri 2](https://tauri.app) application (Rust backend, TypeScript front end) built with [Vite](https://vitejs.dev) and [TypeScript](https://www.typescriptlang.org/); its Rust side uses [Tokio](https://tokio.rs), [Reqwest](https://github.com/seanmonstar/reqwest), [Serde](https://serde.rs), the [keyring](https://github.com/hwchen/keyring-rs) crate and the [`windows`](https://github.com/microsoft/windows-rs) crate. The macOS app has no third-party dependencies.
+
+The full third-party attribution is recorded in [NOTICE.md](NOTICE.md).
+
 ## License
 
 - **Code:** [MIT](LICENSE) — use it, fork it, learn from it, just keep the copyright notice.
