@@ -14,7 +14,7 @@ import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { createCallChip, type ChipStatus } from "../ui/callchip";
 import { cubicBezier, clamp, lerp } from "../core/anim";
-import type { AgentTask } from "../core/state";
+import { State, type AgentTask } from "../core/state";
 
 const ROW_H = 22;
 /** One step transition, milliseconds. */
@@ -133,7 +133,15 @@ export class Ticker {
   }
 
   get animating(): boolean {
-    return this.startMs != null || this.queue.length > 0 || this.chip.running;
+    // The chip's status is only patched by overview.sync, and island ticks the
+    // active view alone — off-overview it would sit at "running" forever and
+    // hold the visible busy gate. Wall-clock `since` keeps the readout honest
+    // when the overview comes back.
+    return (
+      this.startMs != null ||
+      this.queue.length > 0 ||
+      (this.chip.running && State.view === "overview")
+    );
   }
 
   /** Row b's text lives on the chip; `b.text` is the mirror the commit path reads. */
