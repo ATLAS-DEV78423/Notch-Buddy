@@ -704,20 +704,37 @@ function buildControlCenter(): ViewHost {
    *  invokes the command debounced — the PS worker costs 1-3 s to spawn. */
   const makeSlider = (write: (v: number) => void, commit: (v: number) => void) => {
     const fill = h("div", { class: "cc-slider-fill" });
-    const track = h("div", { class: "cc-slider" }, fill);
+    const knob = h("div", { class: "cc-slider-knob", "aria-hidden": "true" });
+    const track = h("div", { class: "cc-slider" }, fill, knob);
+    const valueEl = h("span", { class: "cc-value", "aria-hidden": "true" });
     let dragging = false;
     let trackRect: DOMRect | null = null;
     let timer = 0;
     let value = 0;
+    let readoutTimer = 0;
 
     const at = (clientX: number) => {
       const r = trackRect ?? track.getBoundingClientRect();
       return r.width > 0 ? clamp01((clientX - r.left) / r.width) : value;
     };
+    const place = (v: number) => {
+      fill.style.transform = `scaleX(${v})`;
+      const w = track.clientWidth - 14;
+      knob.style.left = `${7 + v * Math.max(0, w)}px`;
+    };
+    // Emil: no decoration without feedback purpose — the readout only flashes
+    // on interaction (apply/wheel), never on external sync() or seed-on-open.
+    const showReadout = () => {
+      valueEl.textContent = Math.round(value * 100) + "%";
+      valueEl.dataset.on = "";
+      window.clearTimeout(readoutTimer);
+      readoutTimer = window.setTimeout(() => valueEl.removeAttribute("data-on"), 600);
+    };
     const apply = (v: number, flush = false) => {
       value = clamp01(v);
       write(value);
-      fill.style.transform = `scaleX(${value})`;
+      place(value);
+      showReadout();
       window.clearTimeout(timer);
       if (flush) commit(value);
       else timer = window.setTimeout(() => commit(value), 150);
@@ -753,10 +770,13 @@ function buildControlCenter(): ViewHost {
 
     return {
       el: track,
+      valueEl,
       sync(v: number) {
         if (dragging) return; // the drag owns the fill until pointerup
         value = clamp01(v);
-        fill.style.transform = `scaleX(${value})`;
+        place(value);
+        // keep a mid-fade readout truthful, but never flash one from sync()
+        if (valueEl.hasAttribute("data-on")) valueEl.textContent = Math.round(value * 100) + "%";
       },
     };
   };
@@ -831,11 +851,13 @@ function buildControlCenter(): ViewHost {
       h("div", { class: "cc-row" },
         h("span", { class: "cc-label", text: "Volume" }),
         volume.el,
+        volume.valueEl,
         muteBtn,
       ),
       h("div", { class: "cc-row" },
         h("span", { class: "cc-label", text: "Brightness" }),
         brightness.el,
+        brightness.valueEl,
       ),
       h("div", { class: "cc-row" }, nightBtn, dndBtn, boostBtn, note),
     ),
