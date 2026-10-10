@@ -87,6 +87,8 @@ export class Island {
   private graceTimer: number | null = null;
   /** event-peek timer: hides the island again once the peek window elapses. */
   private peekTimer: number | null = null;
+  /** event-peek generation: invalidates an in-flight deferral when cancelled. */
+  private peekGen = 0;
 
   // Bot hover → love (IslandWindowController.botHoverIn)
   private botHovering = false;
@@ -364,9 +366,13 @@ export class Island {
    */
   peek(ms = 4000) {
     this.cancelPeek();
+    const gen = ++this.peekGen;
     // Never fight the shell while it is still retracting — wait it out first.
     if (this.shellMoving) {
-      requestAnimationFrame(() => this.peek(ms));
+      requestAnimationFrame(() => {
+        if (gen !== this.peekGen) return; // superseded or cancelled meanwhile
+        this.peek(ms);
+      });
       return;
     }
     if (State.mode !== "hidden") return; // already up: nothing to force
@@ -378,6 +384,7 @@ export class Island {
   }
 
   private cancelPeek() {
+    this.peekGen++;
     if (this.peekTimer != null) window.clearTimeout(this.peekTimer);
     this.peekTimer = null;
   }
