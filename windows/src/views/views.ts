@@ -5,6 +5,11 @@
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
+import { createThoughtLine } from "../ui/thoughtline";
+import { createSpringCheck, type SpringCheck } from "../ui/springcheck";
+import { squishSwitch } from "../ui/squishswitch";
+import { createSwipeToast, type SwipeToast } from "../ui/swipetoast";
+import { createSwipeRow } from "../ui/swiperow";
 import { Bridge } from "../core/bridge";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
@@ -187,7 +192,14 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
 function buildOverview(actions: ViewActions): ViewHost {
   const ticker = new Ticker();
-  const who = h("div", { class: "who" });
+  // React Bits' ThoughtLine replaces the static "who · tool" label: the session's
+  // state and elapsed time share one line with the agent name. Stable nodes — the
+  // line patches itself, so its breath and settle never replay on a notify.
+  const thought = createThoughtLine();
+  const whoDot = dot("var(--accent)", 7);
+  const whoName = h("span", { class: "name" });
+  const whoCount = h("span", { class: "count" });
+  const who = h("div", { class: "who" }, whoDot, whoName, thought.el, whoCount);
   const tickerBody = h("div", { class: "card-body" }, who, ticker.el);
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
@@ -230,11 +242,14 @@ function buildOverview(actions: ViewActions): ViewHost {
   return {
     el,
     tick(nowMs: number) {
-      if (mode === "ticker") ticker.tick(nowMs);
+      if (mode !== "ticker") return;
+      ticker.tick(nowMs);
+      thought.tick(nowMs);
     },
     sync() {
       const task = State.focusTask;
-      if (task?.id !== lastFocus) {
+      const focusChanged = task?.id !== lastFocus;
+      if (focusChanged) {
         lastFocus = task?.id ?? null;
         detailOpen = false;
         cardKey = "";
@@ -253,18 +268,15 @@ function buildOverview(actions: ViewActions): ViewHost {
           mode = "ticker";
           cardKey = "";
         }
-        clear(who);
-        who.append(
-          dot(task.color, 7),
-          h("span", { class: "name", text: task.name }),
-          h("span", { class: "tool", text: task.source === "claudeCode" ? "Claude Code" : "n8n" }),
-        );
-        if (task.steps.length > 1) {
-          who.append(h("span", {
-            class: "count",
-            text: `${Math.min(task.stepIndex + 1, task.steps.length)}/${task.steps.length}`,
-          }));
-        }
+        whoDot.style.background = task.color;
+        whoName.textContent = task.name;
+        const progress =
+          task.steps.length > 1
+            ? `${Math.min(task.stepIndex + 1, task.steps.length)}/${task.steps.length}`
+            : "";
+        whoCount.textContent = progress;
+        whoCount.style.display = progress ? "" : "none";
+        thought.sync(task.state, undefined, focusChanged);
         ticker.sync(task);
       } else if (task) {
         const info = State.integrations[task.id];
@@ -478,6 +490,7 @@ function buildNote(): ViewHost {
 
 function buildSettings(actions: ViewActions): ViewHost {
   const soundSwitch = h("button", { class: "switch", onclick: () => actions.toggleSound() });
+  squishSwitch(soundSwitch as HTMLButtonElement);
   const volume = h("input", {
     type: "range", min: "0", max: "0.2", step: "0.005",
     oninput: (e: Event) => actions.setVolume(Number((e.target as HTMLInputElement).value)),
@@ -870,52 +883,10 @@ async function seedBluetooth() {
   }
 }
 
-function renderBluetoothView(): HTMLElement {
-  const devices = State.bluetooth.devices;
-  const connected = devices.filter((d) => d.connected).length;
-  const rows = devices.map((d, i) => {
-    const pending = btPending === d.name;
-    const busy = btPending !== "" && !pending;
-    return h(
-      "div",
-      { class: `bt-device stagger${d.connected ? " on" : ""}`, style: `--i:${i}` },
-      h("span", { class: "bt-icon", text: BT_ICONS[d.type] ?? "•" }),
-      h("span", { class: "bt-name", text: d.name }),
-      d.battery >= 0 ? h("span", { class: "bt-battery", text: `${d.battery}%` }) : null,
-      h("button", {
-        class: pending ? "bt-btn pending" : "bt-btn",
-        disabled: busy,
-        text: pending
-          ? d.connected
-            ? "Disconnecting…"
-            : "Connecting…"
-          : d.connected
-            ? "Disconnect"
-            : "Connect",
-        onclick: () => void toggleBt(d.name, d.connected),
-      }),
-    );
-  });
-  return h(
-    "div",
-    { class: "view-bluetooth" },
-    h(
-      "div",
-      { class: "bt-head" },
-      h("span", {
-        class: "bt-count",
-        text: devices.length ? `${connected} of ${devices.length} connected` : "Paired devices",
-      }),
-      h("button", { class: "bt-refresh", text: "Refresh", onclick: () => void seedBluetooth() }),
-    ),
-    btError ? h("div", { class: "bt-error", text: btError }) : null,
-    ...(devices.length === 0
-      ? [h("div", { class: "bt-empty", text: "No paired devices." })]
-      : rows),
-  );
-}
-
-/** Seeds on open like the control center: external changes emit no events. */
+/** Seeds on open like the control center: external changes emit no events.
+ *  Rows are built once and patched, keyed by device name: a rebuild on every
+ *  notify would replay the row-in animation every 2 s (system-stats) while the
+ *  user is reading the list. */
 function buildBluetoothView(): ViewHost {
   let shown = false;
   State.subscribe(() => {
@@ -923,7 +894,114 @@ function buildBluetoothView(): ViewHost {
     if (on && !shown) void seedBluetooth();
     shown = on;
   });
-  return liveView(renderBluetoothView);
+
+  const count = h("span", { class: "bt-count" });
+  const error = h("div", { class: "bt-error" });
+  const empty = h("div", { class: "bt-empty", text: "No paired devices." });
+  const list = h("div");
+  const el = h(
+    "div",
+    { class: "view" },
+    h(
+      "div",
+      { class: "view-bluetooth" },
+      h(
+        "div",
+        { class: "bt-head" },
+        count,
+        h("button", { class: "bt-refresh", text: "Refresh", onclick: () => void seedBluetooth() }),
+      ),
+      error,
+      empty,
+      list,
+    ),
+  );
+
+  /** What the row's button acts on — the current connected flag for that name. */
+  const connected = new Map<string, boolean>();
+  const rows = new Map<
+    string,
+    { el: HTMLElement; icon: HTMLElement; name: HTMLElement; battery: HTMLElement; btn: HTMLButtonElement }
+  >();
+  let key = "";
+
+  const buildRow = (name: string, index: number) => {
+    const icon = h("span", { class: "bt-icon" });
+    const label = h("span", { class: "bt-name" });
+    const battery = h("span", { class: "bt-battery" });
+    const btn = h("button", {
+      class: "bt-btn",
+      onclick: () => void toggleBt(name, connected.get(name) ?? false),
+    });
+    const row = h(
+      "div",
+      { class: "bt-device stagger", style: `--i:${index}` },
+      icon,
+      label,
+      battery,
+      btn,
+    );
+    return { el: row, icon, name: label, battery, btn };
+  };
+
+  return {
+    el,
+    sync() {
+      const devices = State.bluetooth.devices;
+      const next = devices.map((d) => d.name).join("\u0000");
+      const changed = next !== key;
+      key = next;
+
+      error.style.display = btError ? "" : "none";
+      error.textContent = btError;
+      empty.style.display = devices.length ? "none" : "";
+      count.textContent = devices.length
+        ? `${devices.filter((d) => d.connected).length} of ${devices.length} connected`
+        : "Paired devices";
+
+      const order: HTMLElement[] = [];
+      const alive = new Set<string>();
+      devices.forEach((d, i) => {
+        alive.add(d.name);
+        let row = rows.get(d.name);
+        if (row == null) {
+          row = buildRow(d.name, i);
+          rows.set(d.name, row);
+        }
+        const pending = btPending === d.name;
+        row.icon.textContent = BT_ICONS[d.type] ?? "•";
+        row.name.textContent = d.name;
+        row.battery.style.display = d.battery >= 0 ? "" : "none";
+        row.battery.textContent = d.battery >= 0 ? `${d.battery}%` : "";
+        row.el.classList.toggle("on", d.connected);
+        row.btn.disabled = btPending !== "" && !pending;
+        row.btn.classList.toggle("pending", pending);
+        row.btn.textContent = pending
+          ? d.connected
+            ? "Disconnecting…"
+            : "Connecting…"
+          : d.connected
+            ? "Disconnect"
+            : "Connect";
+        connected.set(d.name, d.connected);
+        order.push(row.el);
+      });
+
+      if (!changed) return;
+      for (const [name, row] of rows) {
+        if (!alive.has(name)) {
+          row.el.remove();
+          rows.delete(name);
+          connected.delete(name);
+        }
+      }
+      // Reposition only what actually moved: a row already in place keeps its
+      // node, so a newly paired device does not re-animate the whole list.
+      order.forEach((node, i) => {
+        if (list.children[i] !== node) list.insertBefore(node, list.children[i] ?? null);
+      });
+    },
+  };
 }
 
 function buildStatsView(): ViewHost {
@@ -1016,6 +1094,58 @@ function buildPomodoroView(): ViewHost {
     ),
   );
 
+  // Rows are built once and patched in place. A full rebuild on every sync
+  // (the old `clear(list)` + re-append) restarted the `stagger` row-in *and* the
+  // SpringCheck swell on any change at all — toggling one task re-animated the
+  // whole list, and the swell was cut off before it could be seen. Only an
+  // added, removed or renamed task rebuilds; a mere toggle patches `data-on`.
+  const rows: { text: string; el: HTMLElement; check: SpringCheck }[] = [];
+
+  function buildRow(text: string, done: boolean, i: number): HTMLElement {
+    const check = createSpringCheck({
+      label: text,
+      checked: done,
+      onChange: (next) => {
+        const task = State.timer.tasks.find((x) => x.text === text);
+        if (!task) return;
+        task.done = next;
+        State.savePomoTasks();
+        State.notify();
+      },
+    });
+    const swipe = createSwipeRow({
+      label: text,
+      onCommit: () => {
+        const at = State.timer.tasks.findIndex((x) => x.text === text);
+        if (at < 0) return;
+        State.timer.tasks.splice(at, 1);
+        State.savePomoTasks();
+        State.notify(); // shape change → list rebuild drops the collapsed row
+      },
+    });
+    swipe.surface.append(
+      check.el,
+      h("button", {
+        class: "task-del",
+        text: "×",
+        onclick: () => {
+          const at = State.timer.tasks.findIndex((x) => x.text === text);
+          if (at < 0) return;
+          State.timer.tasks.splice(at, 1);
+          State.savePomoTasks();
+          State.notify();
+        },
+      }),
+    );
+    const el = h(
+      "div",
+      { class: done ? "task done stagger" : "task stagger", style: `--i:${i}` },
+      swipe.el,
+    );
+    rows.push({ text, el, check });
+    return el;
+  }
+
   let tasksKey = "";
   return {
     el,
@@ -1028,36 +1158,20 @@ function buildPomodoroView(): ViewHost {
       segBreak.classList.toggle("on", t.mode === "break");
       startLabel.textContent = t.running ? "Pause" : "Start";
 
-      const key = t.tasks.map((x) => `${x.text}:${x.done}`).join("|");
-      if (key === tasksKey) return;
-      tasksKey = key;
-      clear(list);
+      // Text and order are the identity; `done` is state the rows patch themselves.
+      const shape = t.tasks.map((x) => x.text).join("\u0000");
+      if (shape !== tasksKey) {
+        tasksKey = shape;
+        clear(list);
+        rows.length = 0;
+        t.tasks.forEach((task, i) => list.append(buildRow(task.text, task.done, i)));
+        return;
+      }
       t.tasks.forEach((task, i) => {
-        list.append(
-          h(
-            "div",
-            { class: `${task.done ? "task done" : "task"} stagger`, style: `--i:${i}` },
-            h("input", {
-              type: "checkbox",
-              checked: task.done,
-              onchange: () => {
-                task.done = !task.done;
-                State.savePomoTasks();
-                State.notify();
-              },
-            }),
-            h("span", { text: task.text }),
-            h("button", {
-              class: "task-del",
-              text: "×",
-              onclick: () => {
-                State.timer.tasks.splice(i, 1);
-                State.savePomoTasks();
-                State.notify();
-              },
-            }),
-          ),
-        );
+        const row = rows[i];
+        if (!row) return;
+        row.check.set(task.done);
+        row.el.classList.toggle("done", task.done);
       });
     },
   };
@@ -1116,11 +1230,17 @@ function buildWeatherView(): ViewHost {
 export function buildBanners(): ViewHost {
   const el = h("div", { class: "banners" });
   let key = "";
+  let toast: SwipeToast | null = null;
   return {
     el,
     sync() {
       const b = State.banner;
       if (!b) {
+        // The banner is gone (dismissed by its own TTL, or replaced) — drop the
+        // card and the timers mirroring that deadline with it.
+        toast?.destroy();
+        toast = null;
+        el.replaceChildren();
         el.style.display = "none";
         key = "";
         return;
@@ -1130,28 +1250,17 @@ export function buildBanners(): ViewHost {
       key = next;
       el.style.display = "";
       const text = b.url && b.url.length > 48 ? `${b.url.slice(0, 47)}…` : b.text;
-      el.replaceChildren(
-        h(
-          "div",
-          { class: "banner" },
-          h("span", { class: "banner-text", text }),
-          b.url
-            ? h("button", {
-                class: "banner-open",
-                text: "Open",
-                onclick: () => {
-                  void Bridge.openUrl(b.url!);
-                  State.dismissBanner();
-                },
-              })
-            : null,
-          h("button", {
-            class: "banner-close",
-            text: "×",
-            onclick: () => State.dismissBanner(),
-          }),
-        ),
-      );
+      toast?.destroy();
+      toast = createSwipeToast({
+        title: text,
+        actionLabel: b.url ? "Open" : undefined,
+        onAction: () => void Bridge.openUrl(b.url!),
+        onClose: () => State.dismissBanner(),
+        remaining: () => State.bannerRemaining(),
+        pause: () => State.pauseBanner(),
+        resume: () => State.resumeBanner(),
+      });
+      el.replaceChildren(toast.el);
     },
   };
 }
@@ -1181,13 +1290,6 @@ export function buildCompactStatus(): ViewHost {
       battery.textContent = `${b.charging ? "⚡" : ""}${b.level}%`;
     },
   };
-}
-
-/** Rebuilds on every sync — that runs once per State.notify()
- *  while the view is active, so State-driven widgets actually redraw. */
-function liveView(render: () => HTMLElement): ViewHost {
-  const el = h("div", { class: "view" });
-  return { el, sync: () => void el.replaceChildren(render()) };
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────

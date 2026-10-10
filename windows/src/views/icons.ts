@@ -36,8 +36,6 @@ export const ICONS = {
   star: "M12 3.2l2.6 5.55 5.9.82-4.3 4.3 1.05 6.13L12 17.1l-5.25 2.9L7.8 13.87 3.5 9.57l5.9-.82L12 3.2z",
   // sparkles (ThoughtLine's mark)
   sparkle: "M12 2.8l2.05 6.15L20.2 11l-6.15 2.05L12 19.2l-2.05-6.15L3.8 11l6.15-2.05L12 2.8z",
-  // archivebox (SwipeRow secondary action)
-  archive: "M3.5 3.5h17v4h-17v-4zm1.5 5.5h14v11.5H5V9zm4.5 3.2h5v2h-5v-2z",
   // square.stack.fill
   stack: "M5 8h14v11.5H5V8zm1.8-3h10.4v1.6H6.8V5zm1.6-2.6h7.2V4H8.4V2.4z",
   // doc.text

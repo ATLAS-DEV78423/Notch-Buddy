@@ -1443,6 +1443,56 @@ input[type="range"]::-webkit-slider-thumb {
 .task-del { flex: none; background: none; border: 0; padding: 0 2px; color: var(--dim-2); cursor: pointer; font-size: 13px; line-height: 1; }
 .task-del:hover { color: var(--ink); }
 
+/* ── React Bits port: SwipeRow (the task row's delete gesture) ───────────────
+   A leftward drag reveals the Delete drawer with rubber-banded ends; past 60 %
+   (or a hard flick) the row folds first, then the rebuild drops it. JS side:
+   ui/swiperow.ts. The wrapper adds no padding, border or margin — the task
+   row's height budget (font 12, padding 3px 4px) stands unchanged. */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  /* Glue: fill the .task flex row the way the check + × pair did. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.swipe-row__drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 56px;
+  display: grid;
+  place-items: center;
+  background: var(--dim-5);
+}
+.swipe-row__drawer button {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 600 11px var(--font);
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+/* The Delete label brightens while the grip is past the commit point; it only
+   becomes interactive at rest, and even then the drag owns the gesture. */
+.swipe-row[data-armed] .swipe-row__drawer button { opacity: 1; }
+.swipe-row[data-armed][data-phase="idle"] .swipe-row__drawer button { pointer-events: auto; }
+.swipe-row__surface {
+  position: relative;
+  background: transparent; /* the row's own look shows through */
+  /* Glue: same centering and gap the .task row gave its children. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1);
+  touch-action: pan-y; /* vertical scrolling still belongs to the list */
+}
+.swipe-row[data-dragging] .swipe-row__surface { transition: none; }
+.swipe-row[data-dragging],
+.swipe-row[data-dragging] * { user-select: none; }
+.swipe-row[data-phase="collapsing"] { transition: height 200ms ease, opacity 200ms ease; }
+
 /* ── Utility ────────────────────────────────────────────────────────────── */
 
 .grow {
