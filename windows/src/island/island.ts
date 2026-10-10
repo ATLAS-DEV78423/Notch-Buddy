@@ -15,6 +15,7 @@ import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { react, setPrimaryEngine, tickReactions } from "../mochi/reactions";
+import { startPowerWatch } from "../mochi/power";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { UploadCanvas } from "../upload/canvas";
@@ -70,6 +71,8 @@ export class Island {
 
   private engine = new BotEngine();
   private greeting = new Greeting();
+  /** Battery watch stop fn (Task 5), released on document teardown. */
+  private stopPowerWatch: (() => void) | null = null;
 
   private running = false;
   private lastFrame = 0;
@@ -111,6 +114,8 @@ export class Island {
     this.wireInput();
     this.engine.onDizzy = () => this.handleDizzy();
     setPrimaryEngine(this.engine);
+    this.stopPowerWatch = startPowerWatch();
+    window.addEventListener("pagehide", () => this.stopPowerWatch?.());
     this.greeting.onComplete = () => this.fsm.greetComplete();
     State.subscribe(() => {
       this.dirty = true;
