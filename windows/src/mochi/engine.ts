@@ -257,7 +257,8 @@ export class BotEngine {
   private auraI = 0;
   private prop: "headphones" | null = null;
   private poseName: string | null = null;
-  private poseUntil = 0;
+  /** Bus-owned transient deadline (performance.now() ms); see setReactionDeadline. */
+  private reactionUntil = 0;
   private poseEye: EyeShape | null = null;
   private beatAt = 0;
 
@@ -332,15 +333,11 @@ export class BotEngine {
     this.prop = name;
   }
 
-  /** Named pose override composed from existing parts; `null` clears; `ttlMs` auto-clears. */
-  setPoseOverride(name: string | null, ttlMs?: number) {
-    if (name === this.poseName) {
-      if (name !== null && ttlMs !== undefined) this.poseUntil = performance.now() + ttlMs;
-      return;
-    }
+  /** Named pose override composed from existing parts; `null` clears. */
+  setPoseOverride(name: string | null) {
+    if (name === this.poseName) return;
     const prev = this.poseName;
     this.poseName = name;
-    this.poseUntil = name !== null && ttlMs !== undefined ? performance.now() + ttlMs : 0;
     if (prev !== null) {
       const p = POSES[prev];
       if (prev === "wave") { this.waveStart = 0; this.waveUntil = 0; }
@@ -349,6 +346,15 @@ export class BotEngine {
       if (prev === "squirm" && !this.locks.has("ox")) this.ox = 0;
     }
     if (name === "dizzy-red" && !prefersReduced()) this.doRoll(1300, 1);
+  }
+
+  /**
+   * The reaction bus owns transient TTLs; this deadline lets the busy gate keep
+   * the loop alive only while a transient is pending. A held condition passes 0
+   * — it needs no expiry, so under reduced motion (a static frame) the loop sleeps.
+   */
+  setReactionDeadline(untilMs: number) {
+    this.reactionUntil = untilMs;
   }
 
   squash() {
@@ -528,8 +534,11 @@ export class BotEngine {
   /** True while anything is still moving — lets the island stop its RAF loop. */
   get busy(): boolean {
     return (
-      // Active reactions keep the loop alive so tickReactions can expire them.
-      this.poseName !== null || this.auraColor !== null ||
+      // A pending transient must keep ticking so tickReactions can expire it.
+      this.reactionUntil > performance.now() ||
+      // A held reaction only needs the loop while its motion is animated; under
+      // reduced motion the frame is static, so let the loop sleep.
+      (!prefersReduced() && (this.poseName !== null || this.auraColor !== null)) ||
       this.tweens.size > 0 ||
       this.particles.length > 0 ||
       this.cfg.bounces || this.cfg.scans || this.cfg.breathes || this.cfg.zz || this.cfg.sweat ||
@@ -673,9 +682,6 @@ export class BotEngine {
     this.slotH = Math.max(0, this.slotH + this.slotHVel * dt);
 
     // ── Reaction pose override — additive; skipped entirely when none is set.
-    if (this.poseName !== null && this.poseUntil > 0 && nowMs >= this.poseUntil) {
-      this.setPoseOverride(null);
-    }
     const pose = this.poseName === null ? undefined : POSES[this.poseName];
     this.poseEye = pose?.eye ?? null;
     if (pose) {

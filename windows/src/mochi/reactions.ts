@@ -129,6 +129,7 @@ export function tickReactions(nowMs: number): void {
   engine.setPoseOverride(r?.pose ?? null);
   engine.setAura(r?.aura?.[0] ?? null, r?.aura?.[1] ?? 0);
   engine.setProp(conds["media-playing"] || conds["media-paused"] ? "headphones" : null);
+  engine.setReactionDeadline(transient ? transient.until : 0);
 }
 
 // dev harness: ?reactions=1 — chip row firing every kind/condition on the primary engine.
