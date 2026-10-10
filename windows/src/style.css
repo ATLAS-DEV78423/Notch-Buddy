@@ -450,9 +450,9 @@ body {
     border-color 0.12s ease-out, box-shadow 0.12s ease-out;
 }
 
-/* Press feedback the unified block missed — same 0.94 / 80 ms as .btn.
-   Transform-only: these controls never had a hover fade and this won't add one. */
-.tab:active, .header-actions button:active, .link-btn:active, .widget:active,
+/* Press feedback the unified block missed — 13 controls, same 0.94 / 80 ms as .btn;
+   transform-only. .widget excluded: .view.on .stagger's fill-mode both locks its transform. */
+.tab:active, .header-actions button:active, .link-btn:active,
 .media-controls button:active, .cc-icon-btn:active, .task-del:active,
 .banner-open:active, .banner-close:active, .int-more:active, .int-back:active,
 .int-page:active, .int-pill:active, .int-link:active { transform: scale(0.94); }
