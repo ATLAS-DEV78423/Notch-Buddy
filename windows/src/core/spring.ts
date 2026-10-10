@@ -39,7 +39,7 @@ class Engine implements Spring {
 
   set(target: number, immediate = false): void {
     this.target = target;
-    this.done = false;
+    this.done = immediate; // an immediate snap is already at rest
     if (immediate) {
       this.value = target;
       this.v = 0;

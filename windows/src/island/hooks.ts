@@ -249,6 +249,8 @@ function handleHook(island: Island, payload: HookPayload) {
       react("session-error");
       if (focused) surface("error", true);
       else State.setPillBadge(agentId, "error");
+      // Event-peek: an error in a background session still surfaces briefly.
+      island.peek(4000);
       break;
 
     case "SessionEnd":
@@ -314,11 +316,9 @@ function handleHook(island: Island, payload: HookPayload) {
         State.setPillBadge(agentId, "approval");
         island.reveal();
       }
-      // Task 4: surface a hidden island for the request. Placed after alert()/
-      // reveal() because both raise the island synchronously — so peek() holds
-      // the "approval peeks" contract without arming its 4 s auto-hide, which
-      // would otherwise cut a pinned approval card the user has not answered yet.
-      island.peek(4000);
+      // alert()/reveal() already raised the island synchronously and the card is
+      // pinned (State.isPinned), so no event-peek is needed here — arming one
+      // would only schedule a 4 s auto-hide under a card the user hasn't answered.
       // 110 s: the same budget as the relay's DECISION_BUDGET and well under the
       // 130 s Hermes allows. When this fires the relay prints its block receipt,
       // so a Hermes tool call is denied rather than silently allowed.

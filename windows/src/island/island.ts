@@ -92,6 +92,8 @@ export class Island {
   private peekTimer: number | null = null;
   /** event-peek generation: invalidates an in-flight deferral when cancelled. */
   private peekGen = 0;
+  /** Previous timer running flag, to peek on pomodoro completion. */
+  private prevTimerRunning = false;
 
   // Bot hover → love (IslandWindowController.botHoverIn)
   private botHovering = false;
@@ -100,6 +102,8 @@ export class Island {
   private botHoverStart = { x: 0, y: 0 };
 
   private confusedRecovery: number | null = null;
+  /** Task 6 exit handlers, one per view element (a stale one is dropped on re-entry). */
+  private readonly leaveHandlers = new WeakMap<HTMLElement, (e: AnimationEvent) => void>();
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
 
@@ -120,6 +124,13 @@ export class Island {
     State.subscribe(() => {
       this.dirty = true;
       this.ensureRunning();
+      // Event-peek: a pomodoro countdown that just reached zero (natural finish
+      // only — reset/stop leave `remaining` non-zero, stopwatch never hits 0).
+      const t = State.timer;
+      if (this.prevTimerRunning && !t.running && t.remaining === 0 && t.mode !== "stopwatch") {
+        this.peek(4000);
+      }
+      this.prevTimerRunning = t.running;
     });
   }
 
@@ -1058,12 +1069,18 @@ export class Island {
   /** Task 6: runs the outgoing view's view-out, then drops the class. Filtered
    *  by animation name so a child animation's end can't cut the exit short. */
   private leaveView(el: HTMLElement) {
+    // Drop any handler from a previous leave before arming a new one, so rapid
+    // re-entry can never stack listeners on the same element.
+    const prev = this.leaveHandlers.get(el);
+    if (prev) el.removeEventListener("animationend", prev);
     el.classList.add("view-leaving");
     const done = (e: AnimationEvent) => {
       if (e.animationName !== "view-out") return;
       el.removeEventListener("animationend", done);
+      this.leaveHandlers.delete(el);
       el.classList.remove("view-leaving");
     };
+    this.leaveHandlers.set(el, done);
     el.addEventListener("animationend", done);
   }
 

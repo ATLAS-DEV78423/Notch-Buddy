@@ -36,10 +36,10 @@ const CATALOG: Record<ReactionKind, { pose?: string; aura?: readonly [string, nu
   "theme-sparkle": { pose: "squint-happy", aura: ["#F7B32B", 0.6] },
   "battery-drained": { pose: "drained", aura: ["#9AA0A8", 0.3] },
   "battery-charging": { pose: "perky", aura: ["#6BD9FF", 0.6] },
-  "battery-full": { pose: "perky", aura: ["#55D499", 0.5] },
+  "battery-full": { pose: "flex", aura: ["#55D499", 0.5] },
   "dnd-sleep": { pose: "sleep", aura: ["#6E80B8", 0.25] },
   "approval-wave": { pose: "wave", aura: ["#F5A524", 0.7] },
-  "session-done": { pose: "flex", aura: ["#34D49A", 0.7] },
+  "session-done": { pose: "squint-happy", aura: ["#34D49A", 0.7] },
   "session-error": { pose: "dizzy-red", aura: ["#F4505E", 0.8] },
   "session-ratelimit": { pose: "drained", aura: ["#FBA63C", 0.5] },
   "media-playing": { pose: "headphones-idle", aura: ["#7C5CFF", 0.5] },
@@ -54,9 +54,10 @@ const CONDITION_KINDS = new Set<string>([
   "battery-drained", "battery-charging", "battery-full", "dnd-sleep",
   "media-playing", "media-paused",
 ]);
-/** Layer 1 order: battery > dnd > media, mirroring State.updateReaction. */
+/** Layer 1 order: battery > dnd, mirroring State.updateReaction. Media sits
+ *  below the session transients — spec §3.4: session > media > transient. */
 const CONDITION_ORDER: ConditionKind[] = [
-  "battery-drained", "battery-charging", "battery-full", "dnd-sleep", "media-playing",
+  "battery-drained", "battery-charging", "battery-full", "dnd-sleep",
 ];
 const SESSION_KINDS = new Set<string>([
   "approval-wave", "session-done", "session-error", "session-ratelimit",
@@ -90,7 +91,8 @@ export function react(kind: ReactionKind, opts?: { intensity?: number; color?: s
   };
   switch (kind) {
     case "theme-sparkle": engine?.emit("star", 5); break;
-    case "session-done": engine?.emit("spark", 5); break;
+    case "session-done": engine?.emit("heart", 5); break;
+    case "battery-full": engine?.emit("spark", 1); break;
     case "session-ratelimit": engine?.emit("sweat", 1); break;
     case "nuzzle": engine?.emit("heart", 2); break;
   }
@@ -99,11 +101,12 @@ export function react(kind: ReactionKind, opts?: { intensity?: number; color?: s
 
 interface Resolved { pose?: string; aura?: readonly [string, number] }
 
-/** conditions > session transient > media-paused > any other transient. */
+/** conditions > session transient > media (playing/paused) > any other transient. */
 function resolve(nowMs: number): Resolved | null {
   for (const c of CONDITION_ORDER) if (conds[c]) return CATALOG[c];
   const t = transient;
   if (t && nowMs < t.until && SESSION_KINDS.has(t.kind)) return withOpts(t);
+  if (conds["media-playing"]) return CATALOG["media-playing"];
   if (conds["media-paused"]) return CATALOG["media-paused"];
   if (t && nowMs < t.until) return withOpts(t);
   return null;
