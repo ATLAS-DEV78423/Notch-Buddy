@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.2 — October 10, 2026
+
+**Notch-Buddy for Windows 0.3.2** (`windows-v0.3.2`).
+
+- **The artwork the reaction spec calls for, built for real** — where earlier passes had reduced
+  stand-ins:
+  - a `♪` **note particle** for volume changes and for media playback;
+  - a **`100%` badge** and a true **arms-up flex** for a full battery (replacing the hands-at-the-sides
+    compromise);
+  - **hands over ears** for mute, and **hands over the headphones** when media is muted;
+  - **`z` particles** for Do Not Disturb, and **steam wisps** for a rate limit;
+  - the headphones **beat amplitude now follows the volume** when the volume is loud.
+- Additive only: no shipped pose, part or particle was restyled.
+
 ## 0.3.1 — October 10, 2026
 
 **Notch-Buddy for Windows 0.3.1** (`windows-v0.3.1`).
