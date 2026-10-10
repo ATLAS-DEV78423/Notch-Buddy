@@ -11,7 +11,7 @@ import { react, setCondition } from "./reactions";
  * subscribe, then re-evaluated on every notify. Returns an unsubscribe fn.
  */
 export function startPowerWatch(): () => void {
-  let full = false;
+  let full: boolean | null = null; // null until the first real sample — no boot-time flex
   let applying = false;
   const apply = (): void => {
     // setCondition()/react() re-notify, which would re-enter this subscriber.
@@ -23,7 +23,9 @@ export function startPowerWatch(): () => void {
     const isFull = (charging && percent === 100) || percent === 100;
     setCondition("battery-full", isFull);
     // The proud flex: one-shot on each false→true transition, never per event.
-    if (isFull && !full) react("battery-full");
+    // The first sample only sets the baseline, so a boot-time default of 100 %
+    // cannot fire a spurious flex.
+    if (isFull && full === false) react("battery-full");
     full = isFull;
     applying = false;
   };
