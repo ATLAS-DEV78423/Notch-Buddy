@@ -15,11 +15,13 @@ export type EyeShape =
   | "pill" | "wide" | "dot" | "line" | "flat" | "happy" | "closed"
   | "spiral" | "heart" | "star" | "tired" | "wink" | "cup";
 
-export type BadgeKind = "dots" | "bang" | "question" | "dot";
+export type BadgeKind = "dots" | "bang" | "question" | "dot" | "text";
 
 export interface Badge {
   kind: BadgeKind;
   color: RGB;
+  /** Label for `kind: "text"` (e.g. "100%"); ignored by the shape badges. */
+  text?: string;
 }
 
 export type RGB = readonly [number, number, number]; // components 0…1
@@ -54,7 +56,7 @@ interface BotStateCfg {
 }
 
 interface Particle {
-  type: "heart" | "star" | "spark" | "sweat" | "z";
+  type: "heart" | "star" | "spark" | "sweat" | "z" | "note" | "steam";
   x: number; y: number; vx: number; vy: number;
   age: number; life: number; rot: number; size: number;
 }
@@ -128,6 +130,10 @@ interface PoseDef {
   es?: number;    // eye scale (squint / wide)
   blush?: number;
   hands?: number;
+  /** 0 = hands at the sides (today); 1 = raised overhead (bicep flex). */
+  handsUp?: number;
+  /** 0 = hands at the sides (today); 1 = hands over the ears / headphones. */
+  handsOver?: number;
   pitch?: number; // droop
   tilt?: number;
   sy?: number;    // squash
@@ -138,11 +144,12 @@ const POSES: Record<string, PoseDef> = {
   "squint-happy": { eye: "happy", es: 0.6, blush: 0.5 },
   "drained": { eye: "tired", pitch: -0.12, sy: 1.07, sx: 0.95 },
   "perky": { eye: "wide", es: 1.15, blush: 0.4, tilt: -0.06 },
-  "flex": { hands: 1, blush: 0.7, tilt: -0.1 },
+  "flex": { hands: 1, handsUp: 1, blush: 0.7, tilt: -0.1 },
   "sleep": { eye: "closed", pitch: -0.14 },
   "wave": { eye: "happy", hands: 1 },
   "dizzy-red": { eye: "spiral" },
   "pant": { eye: "tired", blush: 0.6 },
+  "mute": { hands: 1, handsOver: 1 },
   "headphones-idle": {},
   "headphones-paused": { eye: "closed" },
   "squirm": { eye: "closed", blush: 1 },
@@ -208,6 +215,8 @@ export class BotEngine {
   yaw = 0; pitch = 0; roll = 0; tilt = 0; open = 1;
   sx = 1; sy = 1; oy = 0; ox = 0;
   tint = 0; morph = 0; hands = 0; blush = 0; es = 1; badgeS = 0;
+  /** Additive hand position factors — default 0 is the shipped sides position. */
+  handsUp = 0; handsOver = 0;
 
   // Targets
   tgYaw = 0; tgPitch = 0; tgTilt = 0; tgSy = 1; tgSx = 1; tgEs = 1;
@@ -261,6 +270,9 @@ export class BotEngine {
   private reactionUntil = 0;
   private poseEye: EyeShape | null = null;
   private beatAt = 0;
+  /** Bus-driven amplitudes: volume bob (0 = still), beat pulse (1 = shipped). */
+  private bobAmp = 0;
+  private beatAmp = 1;
 
   /** Fired when three slaps land inside 1.7 s (→ dizzy + confused view). */
   onDizzy: (() => void) | null = null;
@@ -306,7 +318,7 @@ export class BotEngine {
   }
 
   setBadge(b: Badge | null) {
-    const key = b ? `${b.kind}-${b.color.join(",")}` : "none";
+    const key = b ? `${b.kind}-${b.color.join(",")}${b.text ? `-${b.text}` : ""}` : "none";
     if (key === this.badgeKey) return;
     this.badgeKey = key;
     const tok = ++this.badgeToken;
@@ -331,6 +343,16 @@ export class BotEngine {
 
   setProp(name: "headphones" | null) {
     this.prop = name;
+  }
+
+  /** Volume bob amplitude (0 = still). Time-based, gated in update(). */
+  setBob(amp: number) {
+    this.bobAmp = Math.max(0, amp);
+  }
+
+  /** Headphones beat amplitude; 1 (default) is the shipped pulse. */
+  setBeatAmp(amp: number) {
+    this.beatAmp = Math.max(0, amp);
   }
 
   /** Named pose override composed from existing parts; `null` clears. */
@@ -360,6 +382,13 @@ export class BotEngine {
   squash() {
     this.anim("sy", [[0.78, 70, Ease.out], [1.1, 130, Ease.out], [1, 170, Ease.inOut]]);
     this.anim("sx", [[1.16, 70, Ease.out], [0.95, 130, Ease.out], [1, 170, Ease.inOut]]);
+  }
+
+  /** Headphones pulse — the beat squash, amplitude scaled by the bus (volume). */
+  private beat() {
+    const a = this.beatAmp;
+    this.anim("sy", [[1 - 0.22 * a, 70, Ease.out], [1 + 0.1 * a, 130, Ease.out], [1, 170, Ease.inOut]]);
+    this.anim("sx", [[1 + 0.16 * a, 70, Ease.out], [1 - 0.05 * a, 130, Ease.out], [1, 170, Ease.inOut]]);
   }
 
   /** Mailbox swallow — opens the slot, chews, then closes. */
@@ -625,8 +654,10 @@ export class BotEngine {
     }
 
     const bounce = this.cfg.bounces ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0;
+    // Volume bob (spec §4.1): amplitude follows the slider; motion is gated.
+    const volBob = this.bobAmp > 0 && !prefersReduced() ? Math.sin(t * 4.4) * 0.05 * this.bobAmp : 0;
     const kGen = 1 - Math.pow(0.0008, dt);
-    if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
+    if (!this.locks.has("oy")) this.oy += (bounce + volBob - this.oy) * kGen;
 
     if (this.cfg.breathes) {
       const amp = this.isMini ? 0.07 : 0.035;
@@ -667,7 +698,11 @@ export class BotEngine {
 
     if (n - this.lastAmbient > 1.3) {
       this.lastAmbient = n;
-      if (this.cfg.zz) this.emit("z", 1);
+      // zzz for the shipped sleeping state and the dnd-sleep pose (spec §4.2).
+      if (this.cfg.zz || this.poseName === "sleep") this.emit("z", 1);
+      // Note particles while media plays (spec §4.4) — pose, not prop, so a
+      // paused/muted track stays quiet.
+      if (this.poseName === "headphones-idle" && Math.random() < 0.6) this.emit("note", 1);
       if (!this.isMini && this.cfg.sweat && Math.random() < 0.5) this.emit("sweat", 1);
     }
 
@@ -693,6 +728,11 @@ export class BotEngine {
       if (pose.sy !== undefined) this.sy = pose.sy;
       if (pose.sx !== undefined) this.sx = pose.sx;
     }
+    // Additive hand position (default 0 → shipped sides). Smoothed, but snaps
+    // under reduced motion.
+    const hk = prefersReduced() ? 1 : kGen;
+    this.handsUp += ((pose?.handsUp ?? 0) - this.handsUp) * hk;
+    this.handsOver += ((pose?.handsOver ?? 0) - this.handsOver) * hk;
     switch (this.poseName) {
       case "sleep": {
         const b = Math.sin(t * 1.8) * 0.035; // same breath as the shipped sleeping state
@@ -720,7 +760,7 @@ export class BotEngine {
       case "headphones-idle":
         if (!prefersReduced() && nowMs >= this.beatAt) {
           this.beatAt = nowMs + 500;
-          this.squash();
+          this.beat();
         }
         break;
     }
@@ -1117,6 +1157,16 @@ export class BotEngine {
         localY = hhB * 0.7;
       }
 
+      // Additive raise / position factors — default 0 reproduces the sides pose.
+      if (this.handsUp > 0.001) {
+        localX = lerp(localX, sd * hwB * 1.02, this.handsUp);
+        localY = lerp(localY, -hhB * 0.78, this.handsUp);
+      }
+      if (this.handsOver > 0.001) {
+        localX = lerp(localX, sd * hwB * 1.0, this.handsOver);
+        localY = lerp(localY, -hhB * 0.06, this.handsOver);
+      }
+
       const cosT = Math.cos(this.tilt);
       const sinT = Math.sin(this.tilt);
       const worldX = cx + cosT * localX - sinT * localY;
@@ -1198,6 +1248,19 @@ export class BotEngine {
         x.textBaseline = "middle";
         x.fillText(badge.kind === "bang" ? "!" : "?", 0, R * 0.02);
       }
+    } else if (badge.kind === "text") {
+      // Short text label in a pill matching the dots-pill vocabulary.
+      const label = badge.text ?? "";
+      x.font = `800 ${R * 0.3}px ${FONT}`;
+      x.textAlign = "center";
+      x.textBaseline = "middle";
+      const pw = x.measureText(label).width + R * 0.36;
+      const ph = R * 0.4;
+      roundRectPath(x, -pw / 2, -ph / 2, pw, ph, ph / 2);
+      x.fillStyle = col;
+      x.fill();
+      x.fillStyle = "#fff";
+      x.fillText(label, 0, R * 0.02);
     } else {
       x.fillStyle = "#000";
       x.beginPath();
@@ -1256,6 +1319,23 @@ export class BotEngine {
           x.textAlign = "center";
           x.textBaseline = "middle";
           x.fillText("z", 0, 0);
+          break;
+        case "note":
+          x.rotate(Math.sin(p.age * 4) * 0.15);
+          x.fillStyle = "rgb(124,92,255)";
+          x.font = `800 ${sz * 1.7}px ${FONT}`;
+          x.textAlign = "center";
+          x.textBaseline = "middle";
+          x.fillText("\u266A", 0, 0);
+          break;
+        case "steam":
+          x.strokeStyle = "rgba(255,255,255,0.75)";
+          x.lineWidth = Math.max(1, sz * 0.18);
+          x.lineCap = "round";
+          x.beginPath();
+          x.moveTo(0, sz * 0.5);
+          x.quadraticCurveTo(sz * 0.6, 0, 0, -sz * 0.5);
+          x.stroke();
           break;
       }
       x.restore();

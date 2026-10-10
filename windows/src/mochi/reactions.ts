@@ -4,7 +4,7 @@
 // State.notify(), which is the existing wake path back into that loop.
 
 import { State } from "../core/state";
-import type { BotEngine } from "./engine";
+import type { Badge, BotEngine } from "./engine";
 
 export type ReactionKind =
   | "brightness" | "volume" | "mute-flash" | "theme-sparkle"
@@ -29,14 +29,15 @@ export const REACTION_TTL: Record<ReactionKind, number> = {
 };
 
 /** kind → pose-override name + aura [color, intensity]; one entry per kind. */
-const CATALOG: Record<ReactionKind, { pose?: string; aura?: readonly [string, number] }> = {
+const CATALOG: Record<ReactionKind, { pose?: string; aura?: readonly [string, number]; badge?: Badge }> = {
   brightness: { aura: ["#FFFFFF", 0.7] },
   volume: { aura: ["#7CC7FF", 0.7] },
-  "mute-flash": { aura: ["#9AA0A8", 0.3] },
+  "mute-flash": { pose: "mute", aura: ["#9AA0A8", 0.3] },
   "theme-sparkle": { pose: "squint-happy", aura: ["#F7B32B", 0.6] },
   "battery-drained": { pose: "drained", aura: ["#9AA0A8", 0.3] },
   "battery-charging": { pose: "perky", aura: ["#6BD9FF", 0.6] },
-  "battery-full": { pose: "flex", aura: ["#55D499", 0.5] },
+  // §4.2 full: arms-up flex + proud blush (pose) + the 100% pill badge.
+  "battery-full": { pose: "flex", aura: ["#55D499", 0.5], badge: { kind: "text", color: [0.333, 0.831, 0.6], text: "100%" } },
   "dnd-sleep": { pose: "sleep", aura: ["#6E80B8", 0.25] },
   "approval-wave": { pose: "wave", aura: ["#F5A524", 0.7] },
   "session-done": { pose: "squint-happy", aura: ["#34D49A", 0.7] },
@@ -92,21 +93,32 @@ export function react(kind: ReactionKind, opts?: { intensity?: number; color?: s
   switch (kind) {
     case "theme-sparkle": engine?.emit("star", 5); break;
     case "session-done": engine?.emit("heart", 5); break;
-    case "battery-full": engine?.emit("spark", 1); break;
-    case "session-ratelimit": engine?.emit("sweat", 1); break;
+    case "battery-full": engine?.emit("spark", 1); break; // the one proud sparkle
+    case "session-ratelimit": engine?.emit("sweat", 1); engine?.emit("steam", 2); break;
+    case "volume": engine?.emit("note", 1); break; // §4.1 note particles
     case "nuzzle": engine?.emit("heart", 2); break;
   }
   State.notify(); // wake the island frame loop if it is sleeping
 }
 
-interface Resolved { pose?: string; aura?: readonly [string, number] }
+interface Resolved {
+  pose?: string;
+  aura?: readonly [string, number];
+  badge?: Badge;
+  /** Volume-bob amplitude (spec §4.1); undefined/0 = still. */
+  bob?: number;
+}
 
 /** conditions > session transient > media (playing/paused) > any other transient. */
 function resolve(nowMs: number): Resolved | null {
   for (const c of CONDITION_ORDER) if (conds[c]) return CATALOG[c];
   const t = transient;
   if (t && nowMs < t.until && SESSION_KINDS.has(t.kind)) return withOpts(t);
-  if (conds["media-playing"]) return CATALOG["media-playing"];
+  if (conds["media-playing"]) {
+    // §4.4 muted while playing: hands over the headphones, dimmer aura.
+    if (State.volume.muted) return { pose: "mute", aura: ["#7C5CFF", 0.25] };
+    return CATALOG["media-playing"];
+  }
   if (conds["media-paused"]) return CATALOG["media-paused"];
   if (t && nowMs < t.until) return withOpts(t);
   return null;
@@ -122,10 +134,12 @@ function withOpts(t: NonNullable<typeof transient>): Resolved {
   const pose =
     base.pose ??
     (t.kind === "brightness" && (t.intensity ?? 0) >= BRIGHT_SQUINT_AT ? "squint-happy" : undefined);
-  if (!base.aura) return { pose };
+  // Spec §4.1: the volume slider's bob amplitude follows the level.
+  const bob = t.kind === "volume" ? (t.intensity ?? 0) : undefined;
+  if (!base.aura) return { pose, bob };
   const color = t.color ?? base.aura[0];
   const intensity = t.intensity ?? base.aura[1];
-  return { pose, aura: [color, intensity] };
+  return { pose, aura: [color, intensity], bob };
 }
 
 /** Called from the island frame loop AFTER the engine tick. */
@@ -136,6 +150,10 @@ export function tickReactions(nowMs: number): void {
   engine.setPoseOverride(r?.pose ?? null);
   engine.setAura(r?.aura?.[0] ?? null, r?.aura?.[1] ?? 0);
   engine.setProp(conds["media-playing"] || conds["media-paused"] ? "headphones" : null);
+  engine.setBob(r?.bob ?? 0);
+  // §4.4: the beat amplitude grows with the playing volume.
+  engine.setBeatAmp(conds["media-playing"] ? 0.5 + 0.7 * State.volume.level : 1);
+  engine.setBadge(r?.badge ?? engine.cfg.badge);
   engine.setReactionDeadline(transient ? transient.until : 0);
 }
 
