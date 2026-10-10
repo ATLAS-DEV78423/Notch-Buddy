@@ -1281,18 +1281,15 @@ input[type="range"]::-webkit-slider-thumb {
   transform-origin: left center;
   pointer-events: none;
   background: rgba(245, 246, 248, 0.08); /* ink at the reference's 8% — no color-mix */
-  clip-path: inset(0 0 0 0);
 }
 .call-chip[data-status="running"] .call-chip__fill {
   transition: transform var(--cc-expected) linear;
 }
 .call-chip[data-status="done"] .call-chip__fill {
   background: var(--wash-ok);
-  clip-path: inset(100% 0 0 0);
   transition:
     transform 200ms var(--cc-ease-out),
-    background-color 120ms ease,
-    clip-path 400ms var(--cc-ease-out) 200ms;
+    background-color 120ms ease;
 }
 .call-chip[data-status="error"] .call-chip__fill {
   background: var(--wash-err);
@@ -1356,10 +1353,6 @@ input[type="range"]::-webkit-slider-thumb {
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  .call-chip[data-status="done"] .call-chip__fill {
-    clip-path: inset(0 0 0 0);
-    transition: background-color 120ms ease;
-  }
   .call-chip__glyph {
     transform: none !important;
     filter: none !important;

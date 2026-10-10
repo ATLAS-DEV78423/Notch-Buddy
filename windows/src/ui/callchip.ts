@@ -98,7 +98,7 @@ export function createCallChip(): CallChip {
     stateOf(tick, cur === "tick" ? "in" : prev === "tick" ? "out" : null);
   };
 
-  const apply = (s: ChipStatus, animate: boolean) => {
+  const apply = (s: ChipStatus, animate: boolean, live = 0) => {
     if (s === "running") {
       shakeAnim?.cancel();
       snap(0);
@@ -106,8 +106,9 @@ export function createCallChip(): CallChip {
     } else if (s === "done") {
       fill.style.transform = "scaleX(1)";
     } else if (s === "error") {
-      // Freeze the wipe where it died — the computed matrix, not a guess.
-      snap(Math.min(1, Math.max(0, new DOMMatrix(getComputedStyle(fill).transform).a)));
+      // Freeze the wipe where it died — `live` is the matrix captured while
+      // the running transition was still applied (see sync).
+      snap(live);
       if (animate && !reduced()) {
         shakeAnim = el.animate(
           SHAKE.map((k) => ({ transform: `translateX(${k * SHAKE_PX}px)`, easing: EASE_OUT })),
@@ -125,6 +126,13 @@ export function createCallChip(): CallChip {
       const changed = s !== status;
       const textChanged = textEl.textContent !== text;
       if (textChanged) textEl.textContent = text;
+      // Capture the wipe's live position BEFORE the attribute flip: the new
+      // status replaces the running transition and would cancel the in-flight
+      // interpolation, making the computed transform read the inline target.
+      const frozen =
+        s === "error" && changed
+          ? Math.min(1, Math.max(0, new DOMMatrix(getComputedStyle(fill).transform).a))
+          : 0;
       el.setAttribute("data-status", s);
       roll(glyphOf(s));
       // A new step — or the first running beat — re-arms the wipe and the clock.
@@ -134,7 +142,7 @@ export function createCallChip(): CallChip {
         timer.textContent = "0 ms";
         apply(s, true);
       } else if (changed) {
-        apply(s, true);
+        apply(s, true, frozen);
       }
       if (changed || restart || textChanged) sr.textContent = `${text}, ${WORDS[s]}`;
       status = s;

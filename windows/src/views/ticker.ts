@@ -162,7 +162,7 @@ export class Ticker {
       this.startMs = null;
       this.displayIndex = idx;
       setText(this.a, idx > 0 ? steps[idx - 1] : "…");
-      this.setChip(steps[Math.max(idx, 0)]);
+      this.setChip(steps[Math.max(idx, 0)], this.chipStatus === "running");
       this.rest();
       return;
     }
