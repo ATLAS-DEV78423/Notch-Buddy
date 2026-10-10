@@ -12,6 +12,7 @@ import {
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
+import { setPrimaryEngine, tickReactions } from "../mochi/reactions";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { UploadCanvas } from "../upload/canvas";
@@ -99,6 +100,7 @@ export class Island {
     this.wireFsm();
     this.wireInput();
     this.engine.onDizzy = () => this.handleDizzy();
+    setPrimaryEngine(this.engine);
     this.greeting.onComplete = () => this.fsm.greetComplete();
     State.subscribe(() => {
       this.dirty = true;
@@ -722,6 +724,8 @@ export class Island {
       // is already in the right place the moment the canvas fades out.
       this.drawBot(dt);
     }
+
+    tickReactions(nowMs);
 
     const uploadActive = this.uploadActive;
     if (uploadActive) this.uploadCanvas.draw(UploadSeq.frame(), nowMs / 1000);

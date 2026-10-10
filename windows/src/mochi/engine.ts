@@ -4,9 +4,10 @@
 // (design/prototype/notch-buddy.html, the visual source of truth) — the Swift
 // arc angles produce a different shape.
 
-import { Ease, lerp, type EaseFn } from "../core/anim";
+import { Ease, lerp, prefersReduced, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
+import { drawHeadphones } from "./props";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,40 @@ const EMOTE_EYE: Record<BotEmoteName, EyeShape> = {
   yawn: "tired", happy: "happy", annoyed: "line",
 };
 
+// ── Reaction pose overrides (Task 3) ─────────────────────────────────────────
+
+/**
+ * A named pose composed from existing parts: every field forces one animated
+ * value while the override is set; the springs resume on their own when it is
+ * cleared. Time-based motion (jitter, beat bob, waving, breathing) lives in
+ * `update()` and is gated on `prefersReduced()` there.
+ */
+interface PoseDef {
+  eye?: EyeShape;
+  es?: number;    // eye scale (squint / wide)
+  blush?: number;
+  hands?: number;
+  pitch?: number; // droop
+  tilt?: number;
+  sy?: number;    // squash
+  sx?: number;
+}
+
+const POSES: Record<string, PoseDef> = {
+  "squint-happy": { eye: "happy", es: 0.6, blush: 0.5 },
+  "drained": { eye: "tired", pitch: -0.12, sy: 1.07, sx: 0.95 },
+  "perky": { eye: "wide", es: 1.15, blush: 0.4, tilt: -0.06 },
+  "flex": { hands: 1, blush: 0.7, tilt: -0.1 },
+  "sleep": { eye: "closed", pitch: -0.14 },
+  "wave": { eye: "happy", hands: 1 },
+  "dizzy-red": { eye: "spiral" },
+  "pant": { eye: "tired", blush: 0.6 },
+  "headphones-idle": {},
+  "headphones-paused": { eye: "closed" },
+  "squirm": { eye: "closed", blush: 1 },
+  "nuzzle": { eye: "happy", blush: 0.8, tilt: 0.14, pitch: -0.06 },
+};
+
 // ── Small helpers ─────────────────────────────────────────────────────────────
 
 const now = () => performance.now() / 1000;
@@ -217,6 +252,15 @@ export class BotEngine {
   private miniLookTarget = { x: 0, y: 0 };
   private miniLookNextTime = 0;
 
+  // Reaction hooks (Task 3) — all inert (null / 0) until a reaction sets them.
+  private auraColor: RGB | null = null;
+  private auraI = 0;
+  private prop: "headphones" | null = null;
+  private poseName: string | null = null;
+  private poseUntil = 0;
+  private poseEye: EyeShape | null = null;
+  private beatAt = 0;
+
   /** Fired when three slaps land inside 1.7 s (→ dizzy + confused view). */
   onDizzy: (() => void) | null = null;
 
@@ -276,6 +320,35 @@ export class BotEngine {
   blink() {
     if (this.locks.has("open")) return;
     this.anim("open", [[0.06, 70, Ease.inOut], [1, 130, Ease.out]]);
+  }
+
+  /** Radial glow behind the body; `null` clears. `intensity` 0…1 → alpha 0.15…0.45. */
+  setAura(color: string | null, intensity: number) {
+    this.auraColor = color === null ? null : hexToRGB(color);
+    this.auraI = Math.max(0, Math.min(1, intensity));
+  }
+
+  setProp(name: "headphones" | null) {
+    this.prop = name;
+  }
+
+  /** Named pose override composed from existing parts; `null` clears; `ttlMs` auto-clears. */
+  setPoseOverride(name: string | null, ttlMs?: number) {
+    if (name === this.poseName) {
+      if (name !== null && ttlMs !== undefined) this.poseUntil = performance.now() + ttlMs;
+      return;
+    }
+    const prev = this.poseName;
+    this.poseName = name;
+    this.poseUntil = name !== null && ttlMs !== undefined ? performance.now() + ttlMs : 0;
+    if (prev !== null) {
+      const p = POSES[prev];
+      if (prev === "wave") { this.waveStart = 0; this.waveUntil = 0; }
+      if (p?.hands !== undefined && this.hands > 0.01) this.anim("hands", [[0, 200, Ease.inOut]]);
+      if (p?.blush !== undefined && this.blush > 0.01) this.anim("blush", [[0, 300, Ease.inOut]]);
+      if (prev === "squirm" && !this.locks.has("ox")) this.ox = 0;
+    }
+    if (name === "dizzy-red" && !prefersReduced()) this.doRoll(1300, 1);
   }
 
   squash() {
@@ -455,6 +528,8 @@ export class BotEngine {
   /** True while anything is still moving — lets the island stop its RAF loop. */
   get busy(): boolean {
     return (
+      // Active reactions keep the loop alive so tickReactions can expire them.
+      this.poseName !== null || this.auraColor !== null ||
       this.tweens.size > 0 ||
       this.particles.length > 0 ||
       this.cfg.bounces || this.cfg.scans || this.cfg.breathes || this.cfg.zz || this.cfg.sweat ||
@@ -597,6 +672,53 @@ export class BotEngine {
     this.slotHVel += acc * dt;
     this.slotH = Math.max(0, this.slotH + this.slotHVel * dt);
 
+    // ── Reaction pose override — additive; skipped entirely when none is set.
+    if (this.poseName !== null && this.poseUntil > 0 && nowMs >= this.poseUntil) {
+      this.setPoseOverride(null);
+    }
+    const pose = this.poseName === null ? undefined : POSES[this.poseName];
+    this.poseEye = pose?.eye ?? null;
+    if (pose) {
+      if (pose.es !== undefined) this.es = pose.es;
+      if (pose.blush !== undefined) this.blush = pose.blush;
+      if (pose.hands !== undefined) this.hands = pose.hands;
+      if (pose.pitch !== undefined) this.pitch = pose.pitch;
+      if (pose.tilt !== undefined) this.tilt = pose.tilt;
+      if (pose.sy !== undefined) this.sy = pose.sy;
+      if (pose.sx !== undefined) this.sx = pose.sx;
+    }
+    switch (this.poseName) {
+      case "sleep": {
+        const b = Math.sin(t * 1.8) * 0.035; // same breath as the shipped sleeping state
+        this.sy = 1 + b;
+        this.sx = 1 - b * 0.57;
+        break;
+      }
+      case "pant":
+        if (!prefersReduced()) {
+          const b = Math.sin(t * 7) * 0.03;
+          this.sy = 1 + b;
+          this.sx = 1 - b * 0.5;
+        }
+        break;
+      case "squirm":
+        if (!prefersReduced()) this.ox = Math.sin(t * 25) * 0.05;
+        break;
+      case "dizzy-red":
+        if (!prefersReduced()) this.yaw = Math.sin(t * 9) * 0.25;
+        break;
+      case "wave":
+        if (this.waveStart <= 0 || n >= this.waveUntil - 0.05) this.waveStart = n;
+        this.waveUntil = n + 60;
+        break;
+      case "headphones-idle":
+        if (!prefersReduced() && nowMs >= this.beatAt) {
+          this.beatAt = nowMs + 500;
+          this.squash();
+        }
+        break;
+    }
+
     this.lastTime = n;
   }
 
@@ -647,6 +769,7 @@ export class BotEngine {
     const cx = W / 2 + this.ox * R;
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
+    this.drawAura(x, R, cx, cy);
     this.drawHandsBehind(x, R, rx, ry, cx, cy);
 
     x.save();
@@ -656,6 +779,7 @@ export class BotEngine {
 
     const body = this.bodyPath(rx, ry, R);
     this.drawBody(x, body, R, rx, ry);
+    if (this.prop === "headphones") drawHeadphones(x, R, rx, ry);
 
     const blushVal = Math.max(this.blush, this.tint * 0.5) * (1 - this.morph);
     if (blushVal > 0.01) {
@@ -680,6 +804,19 @@ export class BotEngine {
       this.drawBadge(x, this.badge, R, cx, cy);
     }
     this.drawParticles(x, R, cx, cy);
+  }
+
+  /** Radial glow behind the body — inert (no draw call) while no aura is set. */
+  private drawAura(x: CanvasRenderingContext2D, R: number, cx: number, cy: number) {
+    if (!this.auraColor) return;
+    const a = 0.15 + 0.3 * this.auraI;
+    const g = x.createRadialGradient(cx, cy, R * 0.45, cx, cy, R * 1.6);
+    g.addColorStop(0, rgba(this.auraColor, a));
+    g.addColorStop(1, rgba(this.auraColor, 0));
+    x.fillStyle = g;
+    x.beginPath();
+    x.arc(cx, cy, R * 1.6, 0, Math.PI * 2);
+    x.fill();
   }
 
   private bodyPath(rx: number, ry: number, R: number): Path2D {
@@ -747,7 +884,7 @@ export class BotEngine {
   }
 
   private drawEyes(x: CanvasRenderingContext2D, body: Path2D, R: number, rx: number, ry: number) {
-    let shape: EyeShape = this.eyeOverride ?? this.cfg.eye;
+    let shape: EyeShape = this.poseEye ?? this.eyeOverride ?? this.cfg.eye;
     if (this.morph > 0.5) {
       if (this.isChewing) shape = "happy";
       else if (this.slotHTarget > 0.05 || this.slotH > 0.1) shape = "cup";
