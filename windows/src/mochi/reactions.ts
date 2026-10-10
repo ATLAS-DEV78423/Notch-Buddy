@@ -32,7 +32,7 @@ export const REACTION_TTL: Record<ReactionKind, number> = {
 const CATALOG: Record<ReactionKind, { pose?: string; aura?: readonly [string, number] }> = {
   brightness: { aura: ["#FFFFFF", 0.7] },
   volume: { aura: ["#7CC7FF", 0.7] },
-  "mute-flash": { aura: ["#F4505E", 0.9] },
+  "mute-flash": { aura: ["#9AA0A8", 0.3] },
   "theme-sparkle": { pose: "squint-happy", aura: ["#F7B32B", 0.6] },
   "battery-drained": { pose: "drained", aura: ["#9AA0A8", 0.3] },
   "battery-charging": { pose: "perky", aura: ["#6BD9FF", 0.6] },
@@ -112,13 +112,20 @@ function resolve(nowMs: number): Resolved | null {
   return null;
 }
 
+/** Brightness at or above this reads as a happy squint (spec §4.1 "at high values"). */
+const BRIGHT_SQUINT_AT = 0.75;
+
 /** Catalog entry with react() opts folded in (intensity + track-change colour). */
 function withOpts(t: NonNullable<typeof transient>): Resolved {
   const base = CATALOG[t.kind];
-  if (!base.aura) return base;
+  // Spec §4.1: a bright screen makes Mochi squint happily at high values.
+  const pose =
+    base.pose ??
+    (t.kind === "brightness" && (t.intensity ?? 0) >= BRIGHT_SQUINT_AT ? "squint-happy" : undefined);
+  if (!base.aura) return { pose };
   const color = t.color ?? base.aura[0];
   const intensity = t.intensity ?? base.aura[1];
-  return { pose: base.pose, aura: [color, intensity] };
+  return { pose, aura: [color, intensity] };
 }
 
 /** Called from the island frame loop AFTER the engine tick. */
