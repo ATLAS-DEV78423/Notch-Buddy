@@ -51,7 +51,7 @@ Meet **Pip**: a soft little squircle with big eyes that pops out of your notch, 
 - 👗 **Dress Pip up** — right-click him for the wardrobe. He also dresses up for the seasons on his own.
 - ⌨️ **Keyboard shortcuts** — open the chat, jump to an alert or a terminal, switch pills, mute, send Pip to the desktop or open the wardrobe from anywhere; all customizable in Settings → Shortcuts.
 - 🗂️ **A desktop companion on Windows** *(Windows, 0.2.0)* — the island becomes tab groups (Home, Agents, Media, System, Tools) with a live dashboard: media player with controls, system stats, control centre (volume, brightness, night light, Do Not Disturb), Bluetooth, pomodoro and stopwatch, weather, battery alerts, clipboard-URL banners, nine animated background effects and a compact status strip. See [`windows/README.md`](windows/README.md).
-- 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, 28 handcrafted sounds, a greeting on launch.
+- 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, 29 handcrafted sounds, a greeting on launch.
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the notch (the top edge of the screen on Windows and Linux).
 - 🖥️ **Any Mac, notch or not** — on an iMac, a Mac mini, or a MacBook with its lid closed on an external display, Pip sits in a small bar at the top of the screen.
 - 📱 **Notch-Buddy on iPhone** — your sessions, approvals and services in your pocket, with Live Activities, widgets and Siri. See [Notch-Buddy on iPhone](#notch-buddy-on-iphone).
@@ -281,7 +281,7 @@ Amp uses a TypeScript plugin model rather than a hook command. Notch-Buddy insta
 - **Claude Code**: a tiny `nb-hook` script receives hook events and forwards them over a Unix socket to the app. For approvals it waits for your click, then answers the hook.
 - **Integrations**: lightweight pollers, paused when nothing is watching.
 - **Declared pills**: `PillCatalog.swift` is the single source of truth — every pill (coding tools, agents, AI providers, services) is declared there with its ID, color and category.
-- **Sounds**: 28 short WAVs played through preloaded `AVAudioPlayer`s.
+- **Sounds**: 29 short WAVs played through preloaded `AVAudioPlayer`s.
 
 The macOS app is native Swift 6 / SwiftUI / AppKit with **zero third-party dependencies**.
 

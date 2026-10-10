@@ -130,7 +130,7 @@ Installing is optional — `target/release/coucou.exe` runs on its own. There is
 window in the taskbar and no console: the island at the top of the screen and the
 Pip in the notification area are the whole app, and Quit lives in its menu.
 
-The 28 sounds are the macOS app's own files; they are never duplicated in this
+The 29 sounds are the macOS app's own files; they are never duplicated in this
 folder. The path is declared once, in `SOUNDS_DIR` at the top of
 `vite.config.ts` — when they move to `shared/sounds/`, change that one line.
 
@@ -240,3 +240,7 @@ in full in [../NOTICE.md](../NOTICE.md):
   the reactive-motion *feel* of the island shell and Mochi (per-property,
   interruptible springs) was inspired by bloom. The spring integrator here is a
   small hand-rolled reimplementation, not bloom's code.
+- **Coucou** by [Louis Raillé](https://github.com/Louis-CFM/coucou) — the original
+  project this Windows build is a fork of. Its MIT copyright is retained in
+  [../LICENSE](../LICENSE), and the fork's rebranding and attribution are recorded in
+  [../NOTICE.md](../NOTICE.md).

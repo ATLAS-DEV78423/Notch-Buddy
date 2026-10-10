@@ -37,7 +37,7 @@ sounds and the media remain the property of Louis Raillé and are described in
 > **Before distributing this fork**, the reserved assets still present in this repository
 > must be replaced with your own:
 > - `NotchBuddy/Assets.xcassets/` — app icon and menu bar icon
-> - `NotchBuddy/Resources/sounds/` — the 28 WAV files
+> - `NotchBuddy/Resources/sounds/` — the 29 WAV files
 > - `docs/media/` and `design/` — screenshots, GIFs and videos
 > - `NotchBuddy/PhoneAssets.xcassets/` — the iPhone app icons
 >
