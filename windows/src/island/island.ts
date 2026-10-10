@@ -1,11 +1,13 @@
 // The island: DOM shell, sizing animation, Mochi placement, mouse handling.
 // Mirrors IslandRootView.swift + IslandWindowController.swift.
 
-import { Tracked, Spring, clamp } from "../core/anim";
+import { Spring, clamp, prefersReduced } from "../core/anim";
+import { spring } from "../core/spring";
+import { SHELL_HEIGHT, SHELL_RADIUS, SHELL_WIDTH, SHELL_Y } from "../core/motion-tokens";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
-  EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
+  EXPANDED_CORNER, EXPANDED_W, PANEL_H, PANEL_W,
+  ROUNDED_CORNER, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
   islandSize,
   type IslandMode, type IslandViewName,
 } from "../core/layout";
@@ -33,8 +35,6 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 /** Seconds between the drop and the moment the progress bar starts filling. */
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
 
-const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
-
 export class Island {
   readonly fsm = new IslandStateMachine();
 
@@ -57,9 +57,13 @@ export class Island {
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
 
-  private width = new Tracked(NOTCH_W);
-  private height = new Tracked(0);
-  private radius = new Tracked(ROUNDED_CORNER);
+  /** Shell geometry springs (spec §3.3): per-property, retarget mid-flight. */
+  private shell = {
+    w: spring(0, SHELL_WIDTH),
+    h: spring(0, SHELL_HEIGHT),
+    y: spring(0, SHELL_Y),
+    r: spring(0, SHELL_RADIUS),
+  };
   private botCx = new Spring(46);
   private botCy = new Spring(16);
   private botSize = new Spring(10);
@@ -79,6 +83,10 @@ export class Island {
   /** Last shape handed to Rust for the click-through test. */
   private pushedRect = { x: -1, y: -1, w: -1, h: -1 };
   private homeCollapseAt: number | null = null;
+  /** hover-grace timer: delays the collapse after the pointer leaves. */
+  private graceTimer: number | null = null;
+  /** event-peek timer: hides the island again once the peek window elapses. */
+  private peekTimer: number | null = null;
 
   // Bot hover → love (IslandWindowController.botHoverIn)
   private botHovering = false;
@@ -187,7 +195,7 @@ export class Island {
 
     this.header = buildHeader(actions);
     this.banners = buildBanners();
-    this.views = buildViews(actions, () => this.animateGeometry(false));
+    this.views = buildViews(actions, () => this.animateGeometry());
     this.viewsEl = h("div", { id: "views" });
     for (const v of this.views.values()) this.viewsEl.append(v.el);
     this.contentEl = h("div", { id: "content" }, this.banners.el, this.header.el, this.viewsEl);
@@ -286,7 +294,7 @@ export class Island {
       UploadSeq.deactivate();
     }
     this.updateWindowCollapsed();
-    this.animateGeometry(modeOrder(mode) < modeOrder(prev));
+    this.animateGeometry();
     State.notify();
   }
 
@@ -304,7 +312,7 @@ export class Island {
     this.stopSequenceIfLeaving(view);
     State.view = view;
     if (State.mode !== "expanded") this.setMode("expanded");
-    else this.animateGeometry(false);
+    else this.animateGeometry();
     State.lastActivity = performance.now();
     this.homeCollapseAt = null;
     State.notify();
@@ -315,14 +323,13 @@ export class Island {
     if (State.mode !== "expanded") {
       this.fsm.forceHome();
       State.view = view;
-      this.animateGeometry(false);
+      this.animateGeometry();
       State.notify();
       return;
     }
-    const grew = VIEW_LAYOUTS[view].height >= VIEW_LAYOUTS[State.view].height;
     State.view = view;
     State.lastActivity = performance.now();
-    this.animateGeometry(!grew);
+    this.animateGeometry();
     State.notify();
   }
 
@@ -349,6 +356,30 @@ export class Island {
   /** An alert stopped waiting for an answer: let the island auto-close again. */
   dropPin() {
     this.fsm.pinned = false;
+  }
+
+  /**
+   * Event-peek: force-reveal the hidden island for `ms`, then hide it again.
+   * Any real interaction clears the timer (sticky open); re-peek replaces it.
+   */
+  peek(ms = 4000) {
+    this.cancelPeek();
+    // Never fight the shell while it is still retracting — wait it out first.
+    if (this.shellMoving) {
+      requestAnimationFrame(() => this.peek(ms));
+      return;
+    }
+    if (State.mode !== "hidden") return; // already up: nothing to force
+    this.fsm.reveal();
+    this.peekTimer = window.setTimeout(() => {
+      this.peekTimer = null;
+      this.fsm.forceHidden();
+    }, ms);
+  }
+
+  private cancelPeek() {
+    if (this.peekTimer != null) window.clearTimeout(this.peekTimer);
+    this.peekTimer = null;
   }
 
   // ── File drop ───────────────────────────────────────────────────────────────
@@ -467,28 +498,40 @@ export class Island {
     return { w, h, r };
   }
 
-  private animateGeometry(shrinking: boolean) {
+  /** Intended shell geometry from state (computed, never measured mid-flight). */
+  private shellTarget() {
     const { w, h, r } = this.targetSize();
-    if (shrinking) {
-      this.width.curveTowards(w);
-      this.height.curveTowards(h);
-      this.radius.curveTowards(r);
-    } else {
-      this.width.springTo(w);
-      this.height.springTo(h);
-      this.radius.springTo(r);
-    }
+    // The port glues the island to the top edge, so there is no vertical slide
+    // yet — y stays 0. Kept as a spring so the shell is per-property like bloom.
+    return { w, h, y: 0, r };
+  }
+
+  /** True while any shell spring is still awake. */
+  private get shellMoving(): boolean {
+    const s = this.shell;
+    return !s.w.done || !s.h.done || !s.y.done || !s.r.done;
+  }
+
+  private animateGeometry() {
+    const t = this.shellTarget();
+    // Hide snaps-and-sleeps (busy-gate tombstone); reduced motion snaps too.
+    const snap = State.mode === "hidden" || prefersReduced();
+    this.shell.w.set(t.w, snap);
+    this.shell.h.set(t.h, snap);
+    this.shell.y.set(t.y, snap);
+    this.shell.r.set(t.r, snap);
     this.ensureRunning();
   }
 
   private applyGeometry() {
-    const w = this.width.value;
-    const hh = this.height.value;
-    const r = this.radius.value;
+    const w = this.shell.w.value;
+    const hh = this.shell.h.value;
+    const y = this.shell.y.value;
+    const r = this.shell.r.value;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
     this.islandEl.style.borderRadius = `0 0 ${r}px ${r}px`;
-    this.islandEl.style.transform = `translateX(-50%)`;
+    this.islandEl.style.transform = `translate(-50%, ${y}px)`;
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
     this.miniGrid.style.left = `${w - 40 - 14.5}px`;
@@ -506,8 +549,8 @@ export class Island {
 
   /** Island rect in window coordinates (origin top-left of the 720×320 window). */
   private islandRect(): { x: number; y: number; w: number; h: number } {
-    const w = this.width.value;
-    const hh = this.height.value;
+    const w = this.shell.w.value;
+    const hh = this.shell.h.value;
     return { x: (PANEL_W - w) / 2, y: 0, w, h: hh };
   }
 
@@ -540,12 +583,16 @@ export class Island {
     // The wake strip is the only thing the OS can hit while the island is hidden.
     this.wakeStrip.addEventListener("mouseenter", () => {
       Sound.resume();
+      this.cancelGrace(); // hover-grace: 800ms
       if (State.mode === "hidden") this.fsm.mouseEntered();
     });
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      // Real interaction: a pending collapse-grace or event-peek must yield.
+      this.cancelGrace(); // hover-grace: 800ms
+      this.cancelPeek();
       if (State.mode !== "expanded") {
         this.fsm.click();
         return;
@@ -601,12 +648,11 @@ export class Island {
       if (this.fsm.state === "coucou") this.greeting.hover();
       this.fsm.mouseEntered();
       this.homeCollapseAt = null;
+      this.cancelGrace(); // hover-grace: 800ms
+      this.cancelPeek();
     }
     if (!inIsland && this.wasInIsland) {
-      this.fsm.mouseLeft();
-      if (this.fsm.state === "home" && !State.isPinned) {
-        this.homeCollapseAt = performance.now() + State.settings.autoCloseInterval * 1000;
-      }
+      this.startGrace(); // hover-grace: 800ms
     }
     this.wasInIsland = inIsland;
 
@@ -661,6 +707,24 @@ export class Island {
     this.engine.tgEs = 1;
   }
 
+  // hover-grace: 800ms — a brief exit (crossing a gap) must not collapse the
+  // island; re-entering it cancels the pending mouseLeft.
+  private startGrace() {
+    this.cancelGrace();
+    this.graceTimer = window.setTimeout(() => {
+      this.graceTimer = null;
+      this.fsm.mouseLeft();
+      if (this.fsm.state === "home" && !State.isPinned) {
+        this.homeCollapseAt = performance.now() + State.settings.autoCloseInterval * 1000;
+      }
+    }, 800);
+  }
+
+  private cancelGrace() {
+    if (this.graceTimer != null) window.clearTimeout(this.graceTimer);
+    this.graceTimer = null;
+  }
+
   /** Three slaps → dizzy + confused view for 3.3 s, then back. */
   private handleDizzy() {
     this.prevViewBeforeConfused = State.view;
@@ -691,13 +755,20 @@ export class Island {
   }
 
   private frame = (nowMs: number) => {
-    const dt = Math.min(0.05, (nowMs - this.lastFrame) / 1000);
+    const dtMs = Math.min(50, nowMs - this.lastFrame);
+    const dt = dtMs / 1000;
     this.lastFrame = nowMs;
 
-    this.width.step(dt, nowMs);
-    this.height.step(dt, nowMs);
-    this.radius.step(dt, nowMs);
-    this.applyGeometry();
+    // Shell springs ride this loop: step only while awake, then write. Once
+    // every spring is done the geometry is left untouched and the loop is free
+    // to sleep (0 %-CPU-when-hidden).
+    if (this.shellMoving) {
+      this.shell.w.step(dtMs);
+      this.shell.h.step(dtMs);
+      this.shell.y.step(dtMs);
+      this.shell.r.step(dtMs);
+      this.applyGeometry();
+    }
 
     if (this.dirty) {
       this.dirty = false;
@@ -743,8 +814,7 @@ export class Island {
     // looping animation — breathing, ratelimit sweat, sleeping z's, the search
     // sweep — so a hidden island went on burning frames in exactly the states it
     // spends most of its life in. Geometry still has to finish retracting.
-    const settling =
-      this.width.animating || this.height.animating || this.radius.animating;
+    const settling = this.shellMoving;
     // An active effect keeps the loop alive while the island is visible; the
     // hidden branch stays exactly as before, so a hidden island still costs
     // nothing beyond geometry settling.
@@ -766,16 +836,16 @@ export class Island {
   /** Selected background effect, drawn behind everything in #island-clip. */
   private drawBackgroundCanvas() {
     const fx = backgroundEffect();
-    const on = fx !== "off" && State.mode !== "hidden" && this.width.value >= 4 && this.height.value >= 4;
+    const on = fx !== "off" && State.mode !== "hidden" && this.shell.w.value >= 4 && this.shell.h.value >= 4;
     const want = on ? "block" : "none";
     if (this.bgCanvas.style.display !== want) this.bgCanvas.style.display = want;
     if (!on) return;
-    const w = Math.round(this.width.value);
-    const h = Math.round(this.height.value);
+    const w = Math.round(this.shell.w.value);
+    const h = Math.round(this.shell.h.value);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const bw = Math.round(w * dpr);
     const bh = Math.round(h * dpr);
-    const settling = this.width.animating || this.height.animating;
+    const settling = this.shellMoving;
     if (!settling && (this.bgCanvas.width !== bw || this.bgCanvas.height !== bh)) {
       this.bgCanvas.width = bw;
       this.bgCanvas.height = bh;
@@ -791,7 +861,7 @@ export class Island {
   private glowKey = "";
 
   private updateBotTargets() {
-    const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
+    const p = botPosition(State.mode, State.view, this.shell.h.value, State.uploadProgress);
     this.botCx.target = p.cx;
     this.botCy.target = p.cy;
     this.botSize.target = p.diameter / 0.6;
@@ -910,12 +980,9 @@ export class Island {
       const wasChat = prev === "prompt";
       this.lastSyncedView = State.view;
       // Views reached through State.setView() skip Island.setView()'s geometry
-      // animation, so any view change resizes the island here. Re-issuing the
+      // animation, so any view change retargets the shell here. Re-issuing the
       // same target for the paths that already animated is a no-op.
-      if (prev != null) {
-        const grew = VIEW_LAYOUTS[State.view].height >= VIEW_LAYOUTS[prev].height;
-        this.animateGeometry(!grew);
-      }
+      if (prev != null) this.animateGeometry();
       if (State.view === "prompt") {
         void Bridge.focusWindow(true);
         window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
