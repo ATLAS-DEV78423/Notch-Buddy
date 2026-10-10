@@ -14,7 +14,7 @@ import {
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
-import { setPrimaryEngine, tickReactions } from "../mochi/reactions";
+import { react, setPrimaryEngine, tickReactions } from "../mochi/reactions";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { UploadCanvas } from "../upload/canvas";
@@ -608,6 +608,29 @@ export class Island {
         this.cancelBotHover();
         this.engine.slap();
       }
+    });
+
+    // Tickle / nuzzle (Task 4): a quick tap on Mochi's body squirms, a press
+    // held past 500 ms nuzzles on release. The bot canvas is pointer-events:none,
+    // so the press lands on whatever sits under it; interactive overlays
+    // (drop/upload hit areas, buttons) keep priority and never start a tickle.
+    let press: { at: number; x: number; y: number; target: EventTarget | null } | null = null;
+    this.islandEl.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || State.mode !== "expanded" || this.uploadActive) return;
+      if (!this.isBotHit(e.clientX, e.clientY)) return;
+      if (e.target instanceof Element && e.target.closest("button, input, a, .upload-hit")) return;
+      press = { at: performance.now(), x: e.clientX, y: e.clientY, target: e.target };
+    });
+    // Window-level release: a pointer that leaves the island mid-press must still
+    // clear the record, or the next tap would read as an hours-long hold.
+    window.addEventListener("pointerup", (e) => {
+      const p = press;
+      press = null;
+      if (!p || p.target !== e.target) return;
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 10) return;
+      const held = performance.now() - p.at;
+      if (held >= 500) react("nuzzle");
+      else if (held <= 250) react("tickle");
     });
 
     window.addEventListener("keydown", (e) => {

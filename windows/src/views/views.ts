@@ -16,6 +16,7 @@ import { prefersReduced } from "../core/anim";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
+import { react } from "../mochi/reactions";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
@@ -703,7 +704,7 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 function buildControlCenter(): ViewHost {
   /** Drag (pointerdown/move) + scroll wheel. Writes State locally right away,
    *  invokes the command debounced — the PS worker costs 1-3 s to spawn. */
-  const makeSlider = (write: (v: number) => void, commit: (v: number) => void) => {
+  const makeSlider = (write: (v: number) => void, commit: (v: number) => void, flash: (v: number) => void) => {
     const fill = h("div", { class: "cc-slider-fill" });
     const knob = h("div", { class: "cc-slider-knob", "aria-hidden": "true" });
     const track = h("div", { class: "cc-slider" }, fill, knob);
@@ -736,6 +737,9 @@ function buildControlCenter(): ViewHost {
       write(value);
       place(value);
       showReadout();
+      // Task 4: the slider flash rides the same interaction-only seam as the
+      // readout — never on external sync() (a FN-key change stays silent).
+      flash(value);
       window.clearTimeout(timer);
       if (flush) commit(value);
       else timer = window.setTimeout(() => commit(value), 150);
@@ -785,15 +789,29 @@ function buildControlCenter(): ViewHost {
   const volume = makeSlider(
     (v) => void (State.volume.level = v),
     (v) => void Bridge.setVolume(v),
+    (v) => {
+      react("volume", { intensity: v });
+      // Volume moved while a track is playing: the bus resolves media-loud over
+      // the plain volume flash (media-playing condition still owns the pose).
+      if (State.media?.playing) react("media-loud");
+    },
   );
   const brightness = makeSlider(
     (v) => void (State.brightness.level = v),
     (v) => void Bridge.setBrightness(v),
+    (v) => react("brightness", { intensity: v }),
   );
 
   const muteBtn = h(
     "button",
-    { class: "cc-icon-btn", title: "Mute", onclick: () => void Bridge.toggleMute() },
+    {
+      class: "cc-icon-btn",
+      title: "Mute",
+      onclick: () => {
+        react("mute-flash");
+        void Bridge.toggleMute();
+      },
+    },
     "🔊",
   );
 

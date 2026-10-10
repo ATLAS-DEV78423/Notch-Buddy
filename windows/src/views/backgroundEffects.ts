@@ -9,6 +9,7 @@
 // effects for free.
 
 import { State } from "../core/state";
+import { react, setCondition } from "../mochi/reactions";
 
 export type BackgroundEffect =
   | "off"
@@ -69,10 +70,40 @@ window.addEventListener("storage", (e) => {
     accent = readAccent();
     applyAccent();
     accentPalette = null;
+    // Task 4: the accent IS the app's custom colour — a change sparkles Mochi.
+    react("theme-sparkle");
   } else {
     return;
   }
   State.notify();
+});
+
+// ── Media reactions (Task 4) ─────────────────────────────────────────────────
+// media-state lands in State (bridge) and the album palette is sampled here;
+// this subscriber piggybacks both — no second detector. The transition guards
+// matter: setCondition()/react() notify again, and without them the re-entrant
+// subscriber would never settle.
+let lastPlaying: boolean | null = null;
+let lastPaused: boolean | null = null;
+let lastTrack = "";
+State.subscribe(() => {
+  const m = State.media;
+  const playing = m?.playing ?? false;
+  const paused = m != null && !playing;
+  if (playing !== lastPlaying) {
+    lastPlaying = playing;
+    setCondition("media-playing", playing);
+  }
+  if (paused !== lastPaused) {
+    lastPaused = paused;
+    setCondition("media-paused", paused);
+  }
+  const track = m?.track ?? "";
+  if (track && track !== lastTrack) {
+    lastTrack = track;
+    // backgroundColors()[0] is the sampled palette's primary (accent fallback).
+    react("track-change", { color: backgroundColors()[0] });
+  }
 });
 
 /** The island frame loop reads the selection through this. */

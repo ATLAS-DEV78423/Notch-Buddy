@@ -7,6 +7,7 @@ import { agentMeta } from "../core/agents";
 import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
+import { react } from "../mochi/reactions";
 import type { Island } from "./island";
 
 const CLAUDE_ID = "integration_claude";
@@ -217,6 +218,7 @@ function handleHook(island: Island, payload: HookPayload) {
       if (lower.includes("rate limit") || lower.includes("limite d")) {
         State.updateTask(agentId, "ratelimit");
         Sound.play("rate");
+        react("session-ratelimit");
       } else if (message.endsWith("?")) {
         State.updateTask(agentId, "question");
         State.appendStep(agentId, message);
@@ -228,6 +230,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "finished");
       if (payload.message) State.appendStep(agentId, payload.message.slice(0, 60));
       Sound.play("finish");
+      react("session-done");
       if (focused) surface("finished", true);
       else State.setPillBadge(agentId, "finished");
       window.setTimeout(() => {
@@ -243,6 +246,7 @@ function handleHook(island: Island, payload: HookPayload) {
     case "StopFailure":
       State.updateTask(agentId, "error");
       Sound.play("error");
+      react("session-error");
       if (focused) surface("error", true);
       else State.setPillBadge(agentId, "error");
       break;
@@ -299,6 +303,8 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "approval");
       State.isPinned = true;
       Sound.play("approval");
+      // Task 4: a permission request waves.
+      react("approval-wave");
       if (focused) {
         island.alert("approval");
       } else {
@@ -308,6 +314,11 @@ function handleHook(island: Island, payload: HookPayload) {
         State.setPillBadge(agentId, "approval");
         island.reveal();
       }
+      // Task 4: surface a hidden island for the request. Placed after alert()/
+      // reveal() because both raise the island synchronously — so peek() holds
+      // the "approval peeks" contract without arming its 4 s auto-hide, which
+      // would otherwise cut a pinned approval card the user has not answered yet.
+      island.peek(4000);
       // 110 s: the same budget as the relay's DECISION_BUDGET and well under the
       // 130 s Hermes allows. When this fires the relay prints its block receipt,
       // so a Hermes tool call is denied rather than silently allowed.
