@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 — October 10, 2026
+
+**Notch-Buddy for Windows 0.3.0** (`windows-v0.3.0`).
+
+- **Pip becomes the living indicator** of system, media, agent and touch events. A per-property
+  spring system drives the island shell (width, height, y and radius settle independently), and a
+  reaction bus composes persistent conditions, session state and transient flashes onto Pip:
+  brightness and volume glow, mute and theme flashes, battery drained/charging/full, session
+  approval/done/error/ratelimit, media playing/paused/loud and track changes, plus tap-to-tickle
+  and hold-to-nuzzle.
+- **DOM choreography** — the pomodoro countdown rolls its digits, long ticker rows marquee with
+  holds, and views enter and exit asymmetrically.
+- **Hover-grace and event-peek** — a brief pointer exit no longer collapses the island, and a
+  bounded event-peek force-reveals it for up to four seconds.
+- A dev-only reaction harness is available on the island window with `?reactions=1`.
+- **Fixes** — the island shell no longer leaks a pending event-peek deferral on interaction; the
+  battery conditions ride the app's existing Rust battery source instead of an unverified WebView2
+  API; session reactions now outrank media reactions as specified; the ported UI modules (pointer,
+  springcheck, squishswitch, swipetoast, thoughtline) are tracked so a fresh clone builds.
+
 ## Rebrand — Notch-Buddy fork
 
 - Forked from [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé (MIT) and
