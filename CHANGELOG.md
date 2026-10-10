@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 — October 10, 2026
+
+**Notch-Buddy for Windows 0.3.1** (`windows-v0.3.1`).
+
+- **Reduced motion** — with a held condition (battery, media, Do Not Disturb) the island's frame loop
+  now sleeps instead of redrawing a static frame. Hidden CPU is unchanged.
+- **Reaction fidelity** — mute reads as a dimmed aura rather than a red flash, and brightness squints
+  at high values.
+- **Ticker** — the current-step row (CallChip) now marquees like the other rows when its text
+  overflows.
+- **Credits** — the READMEs and NOTICE now credit **React Bits** (six ported micro-interactions) and
+  **bloom** (the reactive-motion inspiration), plus the main open-source libraries.
+- Removed the unreachable engine-side pose-TTL path (the reaction bus owns TTLs).
+
 ## 0.3.0 — October 10, 2026
 
 **Notch-Buddy for Windows 0.3.0** (`windows-v0.3.0`).
