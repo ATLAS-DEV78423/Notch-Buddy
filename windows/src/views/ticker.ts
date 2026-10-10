@@ -58,7 +58,7 @@ function setText(row: Row, text: string) {
   row.text = text;
   (row.shimmer.firstElementChild as HTMLElement).textContent = text;
   (row.dim.firstElementChild as HTMLElement).textContent = text;
-  mountMarquee(row, text);
+  mountMarquee(row.el, row.shimmer, text);
 }
 
 /**
@@ -67,15 +67,15 @@ function setText(row: Row, text: string) {
  * written as custom properties; the CSS animation reads them. Cleared when the
  * text fits. Re-measured on text change and on resize (one observer per Ticker).
  */
-function mountMarquee(row: Row, text: string) {
-  const dist = text ? row.shimmer.scrollWidth - row.shimmer.clientWidth : 0;
+function mountMarquee(container: HTMLElement, clip: HTMLElement, text: string) {
+  const dist = text ? clip.scrollWidth - clip.clientWidth : 0;
   if (dist <= 1) {
-    row.el.classList.remove("marquee-on");
+    container.classList.remove("marquee-on");
     return;
   }
-  row.el.classList.add("marquee-on");
-  row.el.style.setProperty("--mq-distance", `${dist}px`);
-  row.el.style.setProperty("--mq-duration", `${Math.max(dist / 30, 5)}s`);
+  container.classList.add("marquee-on");
+  container.style.setProperty("--mq-distance", `${dist}px`);
+  container.style.setProperty("--mq-duration", `${Math.max(dist / 30, 5)}s`);
 }
 
 /**
@@ -141,8 +141,9 @@ export class Ticker {
     // (the island resizes on every view switch / expand). Kept alive by its
     // observation, so no field is needed.
     new ResizeObserver(() => {
-      mountMarquee(this.a, this.a.text);
-      mountMarquee(this.c, this.c.text);
+      mountMarquee(this.a.el, this.a.shimmer, this.a.text);
+      mountMarquee(this.b.el, this.chip.textEl, this.b.text);
+      mountMarquee(this.c.el, this.c.shimmer, this.c.text);
     }).observe(this.el);
   }
 
@@ -173,6 +174,7 @@ export class Ticker {
   private setChip(text: string, restart = false) {
     this.b.text = text;
     this.chip.sync(text, this.chipStatus, restart);
+    mountMarquee(this.b.el, this.chip.textEl, text);
   }
 
   sync(task: AgentTask | null) {

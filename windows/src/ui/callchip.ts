@@ -19,6 +19,8 @@ export type ChipStatus = "running" | "done" | "error" | "idle";
 
 export interface CallChip {
   el: HTMLElement;
+  /** The clip box around the step text — the ticker measures it for the marquee. */
+  readonly textEl: HTMLElement;
   /** Patch text/status. `restart` re-arms the fill wipe and the clock (a new step). */
   sync(text: string, status: ChipStatus, restart?: boolean): void;
   /** Frame tick from Ticker.tick; writes the ms readout at most every 100 ms. No-op unless running. */
@@ -63,7 +65,8 @@ export function createCallChip(): CallChip {
   );
   const tick = h("span", { class: "call-chip__glyph" }, svg(ICONS.check, 10, { stroke: 2.2 }));
   const slot = h("span", { class: "call-chip__slot", "aria-hidden": "true" }, tool, tick);
-  const textEl = h("span", { class: "call-chip__text" });
+  const textMq = h("span", { class: "mq" });
+  const textEl = h("span", { class: "call-chip__text" }, textMq);
   const timer = h("span", { class: "call-chip__timer", "aria-hidden": "true", text: "0 ms" });
   const sr = h("span", { class: "call-chip__sr", role: "status" });
   const el = h("div", { class: "call-chip", "data-status": "idle" }, fill, slot, textEl, timer, sr);
@@ -122,10 +125,11 @@ export function createCallChip(): CallChip {
 
   return {
     el,
+    textEl,
     sync(text: string, s: ChipStatus, restart = false) {
       const changed = s !== status;
-      const textChanged = textEl.textContent !== text;
-      if (textChanged) textEl.textContent = text;
+      const textChanged = textMq.textContent !== text;
+      if (textChanged) textMq.textContent = text;
       // Capture the wipe's live position BEFORE the attribute flip: the new
       // status replaces the running transition and would cancel the in-flight
       // interpolation, making the computed transform read the inline target.

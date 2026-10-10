@@ -602,15 +602,16 @@ body {
    A row whose text overflows its box scrolls left↔right with holds (ping-pong,
    no jump). ticker.ts measures the overflow and writes --mq-distance /
    --mq-duration; the animation itself is CSS. The inner .mq is the moving
-   content, the .tick-text is its clip box. */
-.tick-text .mq {
+   content, the .tick-text (and the CallChip's .call-chip__text) its clip box. */
+.mq {
   display: inline-block;
   white-space: nowrap;
 }
 .marquee-on .mq {
   animation: marquee var(--mq-duration, 5s) linear infinite;
 }
-.marquee-on .tick-text {
+.marquee-on .tick-text,
+.marquee-on .call-chip__text {
   -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
   mask-image: linear-gradient(90deg, #000 85%, transparent);
 }
