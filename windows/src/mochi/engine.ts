@@ -39,7 +39,7 @@ interface Tween {
 
 type PropKey =
   | "yaw" | "pitch" | "roll" | "tilt" | "open" | "sx" | "sy"
-  | "oy" | "ox" | "tint" | "morph" | "hands" | "blush" | "es" | "badgeS";
+  | "oy" | "ox" | "tint" | "morph" | "hands" | "blush" | "es" | "badgeS" | "flexP";
 
 interface BotStateCfg {
   color: RGB;
@@ -217,6 +217,11 @@ export class BotEngine {
   tint = 0; morph = 0; hands = 0; blush = 0; es = 1; badgeS = 0;
   /** Additive hand position factors — default 0 is the shipped sides position. */
   handsUp = 0; handsOver = 0;
+  /**
+   * Bicep-flex entrance progress (0 = no animation). Driven by `bicepFlex()`'s
+   * one-shot tween; default 0 reproduces the static arms-up flex exactly.
+   */
+  flexP = 0;
 
   // Targets
   tgYaw = 0; tgPitch = 0; tgTilt = 0; tgSy = 1; tgSx = 1; tgEs = 1;
@@ -363,11 +368,15 @@ export class BotEngine {
     if (prev !== null) {
       const p = POSES[prev];
       if (prev === "wave") { this.waveStart = 0; this.waveUntil = 0; }
+      // Cancel a mid-flight flex entrance if the pose is cut short.
+      if (prev === "flex") { this.tweens.delete("flexP"); this.locks.delete("flexP"); this.flexP = 0; }
       if (p?.hands !== undefined && this.hands > 0.01) this.anim("hands", [[0, 200, Ease.inOut]]);
       if (p?.blush !== undefined && this.blush > 0.01) this.anim("blush", [[0, 300, Ease.inOut]]);
       if (prev === "squirm" && !this.locks.has("ox")) this.ox = 0;
     }
     if (name === "dizzy-red" && !prefersReduced()) this.doRoll(1300, 1);
+    // Spec §4.2 / owner ask: a full battery plays the bicep flex once per entry.
+    if (name === "flex" && !prefersReduced()) this.bicepFlex();
   }
 
   /**
@@ -382,6 +391,25 @@ export class BotEngine {
   squash() {
     this.anim("sy", [[0.78, 70, Ease.out], [1.1, 130, Ease.out], [1, 170, Ease.inOut]]);
     this.anim("sx", [[1.16, 70, Ease.out], [0.95, 130, Ease.out], [1, 170, Ease.inOut]]);
+  }
+
+  /**
+   * Bicep-flex entrance (spec §4.2, owner ask). One-shot, ~2 s: the raised hand
+   * snaps up past its target, bounces back, holds proud while the `100%` badge
+   * reads and the sparkle flies, then releases to the static arms-up flex. The
+   * body squashes/stretches through the pop. All tweens settle, so the busy gate
+   * clears afterwards; skipped entirely under reduced motion.
+   */
+  private bicepFlex() {
+    this.flexP = 0;
+    this.anim("flexP", [
+      [1.16, 240, Ease.out],  // snap the arm up, past the target
+      [1, 150, Ease.back],    // bouncy settle of the overshoot
+      [1, 1150, Ease.lin],    // proud hold (badge + one sparkle)
+      [0, 460, Ease.inOut],   // release back to the resting flex
+    ]);
+    this.anim("sy", [[0.88, 110, Ease.out], [1.12, 170, Ease.out], [1, 210, Ease.back]]);
+    this.anim("sx", [[1.1, 110, Ease.out], [0.94, 170, Ease.out], [1, 210, Ease.back]]);
   }
 
   /** Headphones pulse — the beat squash, amplitude scaled by the bus (volume). */
@@ -1158,9 +1186,13 @@ export class BotEngine {
       }
 
       // Additive raise / position factors — default 0 reproduces the sides pose.
-      if (this.handsUp > 0.001) {
-        localX = lerp(localX, sd * hwB * 1.02, this.handsUp);
-        localY = lerp(localY, -hhB * 0.78, this.handsUp);
+      // The flex hand (one side) also carries the entrance overshoot: at rest
+      // flexP is 0, so this is exactly the static arms-up flex.
+      const flexHand = this.poseName === "flex" && sd > 0;
+      if (this.handsUp > 0.001 || flexHand) {
+        const up = this.handsUp + (flexHand ? this.flexP * 0.16 : 0);
+        localX = lerp(localX, sd * hwB * 1.02, up);
+        localY = lerp(localY, -hhB * 0.78, up);
       }
       if (this.handsOver > 0.001) {
         localX = lerp(localX, sd * hwB * 1.0, this.handsOver);
@@ -1175,8 +1207,13 @@ export class BotEngine {
       x.save();
       x.translate(worldX, worldY);
       if (handRot !== 0) x.rotate(handRot);
+      // The flex hand is a white glove so it pops against the body (owner ask).
+      const hs = flexHand ? 1.14 : 1;
       const g = x.createLinearGradient(hew * 0.7, -heh * 0.85, -hew * 0.8, heh * 0.9);
-      if (this.bodyColor) {
+      if (flexHand) {
+        g.addColorStop(0, "rgba(255,255,255,1)");
+        g.addColorStop(1, "rgba(238,241,247,1)");
+      } else if (this.bodyColor) {
         g.addColorStop(0, rgba(mix3(this.bodyColor, [1, 1, 1], 0.35)));
         g.addColorStop(1, rgba(this.bodyColor));
       } else {
@@ -1184,10 +1221,10 @@ export class BotEngine {
         g.addColorStop(1, rgba(BASE_BOTTOM));
       }
       x.beginPath();
-      x.ellipse(0, 0, hew, heh, 0, 0, Math.PI * 2);
+      x.ellipse(0, 0, hew * hs, heh * hs, 0, 0, Math.PI * 2);
       x.fillStyle = g;
       x.fill();
-      x.strokeStyle = "rgba(0,0,0,0.08)";
+      x.strokeStyle = flexHand ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.08)";
       x.lineWidth = 1;
       x.stroke();
       x.restore();
