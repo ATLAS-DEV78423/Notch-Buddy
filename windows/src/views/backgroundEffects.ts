@@ -56,7 +56,13 @@ let effect = readEffect();
 let accent = readAccent();
 
 function applyAccent(): void {
-  document.documentElement.style.setProperty("--accent", accent);
+  const root = document.documentElement.style;
+  root.setProperty("--accent", accent);
+  // Translucent companion for accent washes (.cc-toggle.on): CSS cannot derive
+  // an alpha from a hex custom property, so the tint is built here and follows
+  // the picker like --accent does.
+  const [r, g, b] = readHexInto(accent, [0, 0, 0]);
+  root.setProperty("--accent-soft", `rgba(${r},${g},${b},0.18)`);
 }
 
 applyAccent();

@@ -7,6 +7,8 @@ import { Sound } from "./sound";
 /** Durations the briefs fix: focus counts down from 25 min, break from 5 min. */
 export const FOCUS_SECONDS = 25 * 60;
 export const BREAK_SECONDS = 5 * 60;
+/** Banner TTL: the fuse in the banner and its dismissal count the same 6 s. */
+export const BANNER_TTL_MS = 6000;
 
 const TASKS_KEY = "coucou.pomo.tasks";
 
@@ -192,6 +194,10 @@ class AppState {
   viewGroup: ViewGroup = "agents";
 
   private bannerTimer: number | null = null;
+  /** Remaining TTL while the banner is frozen under the pointer. */
+  private bannerPaused: number | null = null;
+  /** When the running banner dismisses itself. */
+  private bannerEndsAt = 0;
   private listeners = new Set<Listener>();
 
   subscribe(fn: Listener): () => void {
@@ -338,18 +344,52 @@ class AppState {
   /** Shows an in-island banner for a fixed TTL; a new banner replaces the running one. */
   showBanner(text: string, url: string | null = null) {
     this.banner = { text, url };
+    this.bannerPaused = null;
+    this.bannerEndsAt = Date.now() + BANNER_TTL_MS;
+    this.armBanner();
+    this.notify();
+  }
+
+  /** Milliseconds left before the banner dismisses itself. */
+  bannerRemaining(): number {
+    if (!this.banner) return 0;
+    if (this.bannerPaused !== null) return this.bannerPaused;
+    return Math.max(0, this.bannerEndsAt - Date.now());
+  }
+
+  /**
+   * Freezes the banner's countdown — the fuse and the dismissal both stop, and
+   * the remaining TTL is banked so the resume gives back exactly what the pause
+   * took. No notify: nothing in the DOM model changes.
+   */
+  pauseBanner() {
+    if (this.bannerTimer === null || this.bannerPaused !== null) return;
+    window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = null;
+    this.bannerPaused = Math.max(0, this.bannerEndsAt - Date.now());
+  }
+
+  resumeBanner() {
+    if (!this.banner || this.bannerPaused === null) return;
+    this.bannerEndsAt = Date.now() + this.bannerPaused;
+    this.bannerPaused = null;
+    this.armBanner();
+  }
+
+  private armBanner() {
     if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
     this.bannerTimer = window.setTimeout(() => {
       this.banner = null;
       this.bannerTimer = null;
+      this.bannerPaused = null;
       this.notify();
-    }, 6000);
-    this.notify();
+    }, Math.max(0, this.bannerEndsAt - Date.now()));
   }
 
   dismissBanner() {
     if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
     this.bannerTimer = null;
+    this.bannerPaused = null;
     this.banner = null;
     this.notify();
   }

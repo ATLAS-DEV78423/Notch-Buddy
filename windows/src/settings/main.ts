@@ -6,6 +6,7 @@ import "./settings.css";
 import { Bridge, onEvent, type HookStatus, type AgentStatus, type AgentPreview } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
+import { squishSwitch } from "../ui/squishswitch";
 import type { BackgroundEffect } from "../views/backgroundEffects";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
@@ -21,6 +22,7 @@ async function save() {
 
 function toggle(on: boolean, onChange: (v: boolean) => void): HTMLElement {
   const el = h("button", { class: on ? "switch on" : "switch", "aria-pressed": on });
+  squishSwitch(el as HTMLButtonElement);
   el.addEventListener("click", () => {
     const next = !el.classList.contains("on");
     el.classList.toggle("on", next);
@@ -382,6 +384,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
   for (const def of INTEGRATIONS) {
     const active = settings.activeIntegrations.includes(def.id);
     const sw = h("button", { class: active ? "switch on" : "switch" });
+    squishSwitch(sw as HTMLButtonElement);
     sw.addEventListener("click", () => {
       const on = settings.activeIntegrations.includes(def.id);
       if (on) {
