@@ -1474,10 +1474,9 @@ input[type="range"]::-webkit-slider-thumb {
   pointer-events: none;
   transition: opacity 160ms ease-out;
 }
-/* The Delete label brightens while the grip is past the commit point; it only
-   becomes interactive at rest, and even then the drag owns the gesture. */
+/* The Delete label brightens while the grip is past the commit point; the
+   button itself stays inert — the drag owns the gesture. */
 .swipe-row[data-armed] .swipe-row__drawer button { opacity: 1; }
-.swipe-row[data-armed][data-phase="idle"] .swipe-row__drawer button { pointer-events: auto; }
 .swipe-row__surface {
   position: relative;
   background: transparent; /* the row's own look shows through */

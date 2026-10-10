@@ -99,6 +99,8 @@ export function createSwipeRow(opts: {
     /** [time, exposure] — exposure-space, so a positive v opens. */
     hist: [number, number][];
   } | null = null;
+  /** A moved drag's release leaves a synthesized click behind; swallow it. */
+  let swallow = false;
 
   // The reference's watchWindow (lines 37-52): events over child elements can
   // die before reaching the surface, so the live gesture also listens on the window.
@@ -115,6 +117,7 @@ export function createSwipeRow(opts: {
   };
 
   const down = (e: PointerEvent) => {
+    swallow = false; // a stale swallow must never eat the next real tap
     if (e.button !== 0 || grip || root.getAttribute("data-phase") !== "idle") return;
     w = root.offsetWidth || w;
     grip = { id: e.pointerId, x0: e.clientX, y0: e.clientY, grab: null, hist: [] };
@@ -176,6 +179,9 @@ export function createSwipeRow(opts: {
     }
     root.removeAttribute("data-armed");
     if (g.grab === null) return; // never axis-locked: a tap or a vertical drag
+    // The browser will synthesize a click after this release; it must not
+    // toggle the SpringCheck or hit the × as a side effect of the swipe.
+    swallow = true;
     const ex = exposed();
     const v = velocityOf(g.hist);
     if (canCommit() && ex >= commitPoint()) {
@@ -196,6 +202,19 @@ export function createSwipeRow(opts: {
   };
 
   surface.addEventListener("pointerdown", down);
+  // Mirrors squishswitch's swallow: capture runs before the SpringCheck / ×
+  // handlers, so a moved drag's leftover click dies here — a tap that never
+  // moved isn't armed and reaches them unchanged.
+  surface.addEventListener(
+    "click",
+    (e) => {
+      if (!swallow) return;
+      swallow = false;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    },
+    true,
+  );
   surface.addEventListener("transitionend", (e) => {
     if (e.propertyName !== "transform") return;
     if (root.getAttribute("data-phase") === "settling") root.setAttribute("data-phase", "idle");
