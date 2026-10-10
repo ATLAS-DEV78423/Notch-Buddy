@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.3 — October 10, 2026
+
+**Notch-Buddy for Windows 0.3.3** (`windows-v0.3.3`).
+
+- **Security** — the Windows relay pipe now verifies that the process connecting to it runs as the
+  same user, mirroring the check Linux already made and the check the hook already made in the other
+  direction. Previously another process running as you could connect to `\\.\pipe\coucou-<sid>` and
+  inject forged hook or permission events.
+- **Animation** — a full battery now plays a real **bicep-flex** entrance: a white glove hand swings
+  in, Pip raises the arm and flexes with a small overshoot, holds the `100%` badge with one sparkle,
+  then settles — about two seconds, instead of the previous static pose.
+
 ## 0.3.2 — October 10, 2026
 
 **Notch-Buddy for Windows 0.3.2** (`windows-v0.3.2`).
