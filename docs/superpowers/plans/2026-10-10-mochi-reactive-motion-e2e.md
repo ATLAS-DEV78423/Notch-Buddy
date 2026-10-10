@@ -182,3 +182,27 @@ Run the island (`npm run tauri dev`) with `?reactions=1`, then confirm:
 ## Fix commits
 
 None — no confirmed defect.
+
+---
+
+## Addendum (post-review) — headless browser E2E
+
+After the final whole-branch review and its fix wave, the island was run in a **real browser** to turn
+some of the "NOT OBSERVED" items into actual observations.
+
+**Setup:** `vite` dev server on `127.0.0.1:1420` (the Tauri shell is not needed for the DOM/canvas
+path — `bridge.ts` degrades to `null` when `IS_TAURI` is false), driven by headless Chrome.
+
+**Observed (real, not mechanism-level):**
+- The island page boots in Chromium with **0 console errors and 0 exceptions**.
+- With `?reactions=1` the harness self-installs **all 18 chips** (`brightness` … `nuzzle`).
+- Clicking **all 18 chips** programmatically produced **0 errors / 0 exceptions**; 12 canvases live.
+- Screenshot: island header (tabs + pills) renders; the 18-chip harness row renders at the bottom.
+
+**Still NOT OBSERVED (needs the real Tauri window):** spring "feel", pose/aura/prop geometry,
+particle shapes, digit rolls, marquee, view exits, battery transitions. The headless run proves the
+code path *executes*; it cannot judge how it *looks*.
+
+**Defect found and fixed here:** the parked boot glitch — a spurious `battery-full` on the first
+sample, because `State.battery` defaults to 100 %. `power.ts` now fires the one-shot flex only on a
+real false→true transition (`full` starts `null`). Build gate: exit=0, 0 `error TS`.
