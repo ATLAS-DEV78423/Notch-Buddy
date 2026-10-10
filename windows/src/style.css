@@ -280,9 +280,13 @@ body {
 
 /* ── Header tab groups ──────────────────────────────────────────────────── */
 
-.tab-groups { display: flex; gap: 4px; margin-left: 10px; }
+.tab-groups { position: relative; display: flex; gap: 4px; margin-left: 10px; }
 .tab-group { padding: 4px 10px; border-radius: 8px; font-size: 11px; color: #8E939C; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
 .tab-group.active { background: #1D1F23; color: #F5F6F8; }
+.tab-seg-thumb { position: absolute; top: 0; left: 0; height: 100%; border-radius: 8px; background: var(--tab-on); transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1), width 300ms cubic-bezier(0.23, 1, 0.32, 1); pointer-events: none; }
+.tab-groups .tab-group { position: relative; } /* labels above the thumb */
+.tab-groups .tab-group.active { background: transparent; color: var(--ink); } /* thumb carries the fill */
+@media (prefers-reduced-motion: reduce) { .tab-seg-thumb { transition: none; } }
 .sub-view-pills { display: flex; gap: 4px; margin-top: 4px; margin-left: 10px; }
 .sub-view-pill { padding: 2px 8px; border-radius: 6px; font-size: 10px; color: #6B7079; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
 .sub-view-pill.active { background: #1D1F23; color: #F5F6F8; }

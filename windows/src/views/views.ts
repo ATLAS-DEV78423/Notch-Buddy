@@ -9,6 +9,7 @@ import { createThoughtLine } from "../ui/thoughtline";
 import { createSpringCheck, type SpringCheck } from "../ui/springcheck";
 import { squishSwitch } from "../ui/squishswitch";
 import { createSwipeToast, type SwipeToast } from "../ui/swipetoast";
+import { attachTabSegment } from "../ui/tabsegment";
 import { createSwipeRow } from "../ui/swiperow";
 import { Bridge } from "../core/bridge";
 import { State, type AgentTask } from "../core/state";
@@ -141,6 +142,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
     groupTabs.set(g.id, tab);
     groupsEl.append(tab);
   }
+  const setThumb = attachTabSegment(groupsEl);
 
   const subPills = new Map<IslandViewName, HTMLElement>();
   const pillsEl = h("div", { class: "sub-view-pills" });
@@ -176,6 +178,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
       const group = groupOfView(v);
       for (const [id, tab] of groupTabs) tab.classList.toggle("active", id === group);
+      setThumb(groupTabs.get(group)!);
       pillsEl.style.display = group === "agents" ? "none" : "flex";
       // Only the active group's pills: rendering all eight pushed the last
       // four pills and the gear/sound buttons past the island's right edge.
