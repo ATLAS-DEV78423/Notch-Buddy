@@ -1,0 +1,228 @@
+// Mochi reaction bus (Task 3) — a priority queue feeding one transient slot, a
+// condition map, a priority resolver and a pose/aura catalog. The island's frame
+// loop calls tickReactions() right after the engine tick; react() enqueues and
+// pokes State.notify(), which is the existing wake path back into that loop.
+
+import { State } from "../core/state";
+import type { Badge, BotEngine } from "./engine";
+import { createQueue } from "./reaction-queue";
+
+const queue = createQueue(5);
+// react() opts (intensity/color) ride beside the queue — Entry is kind/prio/atMs only.
+const pendingOpts = new Map<string, { intensity?: number; color?: string }>();
+function prioOf(kind: ReactionKind): 0 | 1 | 2 {
+  if (CONTROL_KINDS.has(kind)) return 0;
+  if (SESSION_KINDS.has(kind)) return 1;
+  return 2;
+}
+
+export type ReactionKind =
+  | "brightness" | "volume" | "mute-flash" | "theme-sparkle"
+  | "battery-drained" | "battery-exhausted" | "battery-charging" | "battery-full" | "dnd-sleep"
+  | "approval-wave" | "session-done" | "session-error" | "session-ratelimit"
+  | "media-playing" | "media-paused" | "media-loud" | "track-change"
+  | "tickle" | "nuzzle"
+  | "dnd-wake" | "night-light-on" | "night-light-off" | "memory-freeing" | "memory-freed";
+
+type ConditionKind =
+  | "battery-drained" | "battery-exhausted" | "battery-charging" | "battery-full" | "dnd-sleep"
+  | "media-playing" | "media-paused";
+
+/** Transient lifetimes. Condition kinds aren't TTL'd by the bus (setCondition
+ *  owns them); the value only applies if react() is called on them directly. */
+export const REACTION_TTL: Record<ReactionKind, number> = {
+  brightness: 3000, volume: 3000, "mute-flash": 2000, "theme-sparkle": 1500,
+  "battery-drained": 5000, "battery-exhausted": 5000, "battery-charging": 5000, "battery-full": 5000,
+  "dnd-sleep": 5000, "approval-wave": 2000, "session-done": 2500,
+  "session-error": 2000, "session-ratelimit": 2000, "media-playing": 5000,
+  "media-paused": 5000, "media-loud": 3000, "track-change": 1500,
+  tickle: 1200, nuzzle: 2000,
+  "dnd-wake": 1800, "night-light-on": 2200, "night-light-off": 1500,
+  "memory-freeing": 1800, "memory-freed": 2400,
+};
+
+/** kind → pose-override name + aura [color, intensity]; one entry per kind. */
+const CATALOG: Record<ReactionKind, { pose?: string; aura?: readonly [string, number]; badge?: Badge }> = {
+  brightness: { aura: ["#FFFFFF", 0.7] },
+  volume: { aura: ["#7CC7FF", 0.7] },
+  "mute-flash": { pose: "mute", aura: ["#9AA0A8", 0.3] },
+  "theme-sparkle": { pose: "squint-happy", aura: ["#F7B32B", 0.6] },
+  "battery-drained": { pose: "drained", aura: ["#FFD60A", 0.2] },
+  "battery-exhausted": { pose: "exhausted", aura: ["#FF453A", 0.18] },
+  "battery-charging": { pose: "perky", aura: ["#6BD9FF", 0.6] },
+  // Full energy is communicated by posture, not a numeric badge.
+  "battery-full": { pose: "flex", aura: ["#55D499", 0.5] },
+  "dnd-sleep": { pose: "sleep", aura: ["#6E80B8", 0.25] },
+  "approval-wave": { pose: "wave", aura: ["#F5A524", 0.7] },
+  "session-done": { pose: "squint-happy", aura: ["#34D49A", 0.7] },
+  "session-error": { pose: "dizzy-red", aura: ["#F4505E", 0.8] },
+  "session-ratelimit": { pose: "drained", aura: ["#FBA63C", 0.5] },
+  "media-playing": { pose: "headphones-idle", aura: ["#7C5CFF", 0.5] },
+  "media-paused": { pose: "headphones-paused", aura: ["#7C5CFF", 0.3] },
+  "media-loud": { pose: "pant", aura: ["#FF7AA2", 0.7] },
+  "track-change": { pose: "perky", aura: ["#7C5CFF", 0.6] },
+  tickle: { pose: "squirm" },
+  nuzzle: { pose: "nuzzle", aura: ["#FF9FB0", 0.5] },
+  "dnd-wake": { pose: "perky", aura: ["#B7C8FF", 0.4] },
+  "night-light-on": { pose: "squint-happy", aura: ["#FFB66B", 0.5] },
+  "night-light-off": { pose: "perky", aura: ["#B8DDFF", 0.35] },
+  "memory-freeing": { pose: "perky", aura: ["#6BD9FF", 0.35] },
+  "memory-freed": { pose: "squint-happy", aura: ["#55D499", 0.55] },
+};
+
+const CONDITION_KINDS = new Set<string>([
+  "battery-exhausted", "battery-drained", "dnd-sleep", "battery-charging", "battery-full",
+  "media-playing", "media-paused",
+]);
+/** Layer 1 order: battery > dnd, mirroring State.updateReaction. Media sits
+ *  below the session transients — spec §3.4: session > media > transient. */
+const CONDITION_ORDER: ConditionKind[] = [
+  "battery-exhausted", "battery-drained", "dnd-sleep", "battery-charging", "battery-full",
+];
+const SESSION_KINDS = new Set<string>([
+  "approval-wave", "session-done", "session-error", "session-ratelimit",
+]);
+
+let engine: BotEngine | null = null;
+const conds: Record<ConditionKind, boolean> = {
+  "battery-exhausted": false, "battery-drained": false, "battery-charging": false, "battery-full": false,
+  "dnd-sleep": false, "media-playing": false, "media-paused": false,
+};
+let transient: { kind: ReactionKind; until: number; intensity?: number; color?: string } | null = null;
+
+export function setPrimaryEngine(e: BotEngine | null): void {
+  engine = e;
+}
+
+export function setCondition(
+  kind: ConditionKind,
+  on: boolean,
+): void {
+  if (conds[kind] === on) return;
+  conds[kind] = on;
+  State.notify(); // wake the island frame loop if it is sleeping
+}
+
+function beginReaction(kind: ReactionKind, opts?: { intensity?: number; color?: string }): void {
+  transient = { kind, until: performance.now() + REACTION_TTL[kind], intensity: opts?.intensity, color: opts?.color };
+  switch (kind) {
+    case "theme-sparkle": engine?.emit("star", 5); break;
+    case "session-done": engine?.emit("heart", 5); break;
+    case "battery-full": engine?.emit("spark", 1); break; // the one proud sparkle
+    case "session-ratelimit": engine?.emit("sweat", 1); engine?.emit("steam", 2); break;
+    case "volume": engine?.emit("note", 1); break; // §4.1 note particles
+    case "nuzzle": engine?.emit("heart", 2); break;
+    case "memory-freed": engine?.emit("spark", 4); engine?.squash(); break;
+    case "dnd-wake": engine?.blink(); break;
+  }
+}
+
+export function react(kind: ReactionKind, opts?: { intensity?: number; color?: string }): void {
+  queue.enqueue(kind, prioOf(kind), performance.now());
+  if (opts) pendingOpts.set(kind, opts); else pendingOpts.delete(kind);
+  State.notify(); // wake the island frame loop if it is sleeping
+}
+
+interface Resolved {
+  pose?: string;
+  aura?: readonly [string, number];
+  badge?: Badge;
+  /** Volume-bob amplitude (spec §4.1); undefined/0 = still. */
+  bob?: number;
+}
+
+const CONTROL_KINDS = new Set<ReactionKind>([
+  "dnd-wake", "night-light-on", "night-light-off", "memory-freeing", "memory-freed",
+]);
+
+/** Explicit agent states win; control feedback overlays agent work (DND, night
+ *  light, memory boost fire mid-session and must be visible, then hand control
+ *  back to the agent). */
+function resolve(nowMs: number): Resolved | null {
+  const agentBusy = State.stateOverride || (State.focusTask?.state ?? "idle") !== "idle";
+  const t = transient;
+  if (t && nowMs < t.until && CONTROL_KINDS.has(t.kind)) return withOpts(t);
+  if (agentBusy) return null;
+  if (t && nowMs < t.until && SESSION_KINDS.has(t.kind)) return withOpts(t);
+  for (const c of CONDITION_ORDER) if (conds[c]) return CATALOG[c];
+  if (conds["media-playing"]) {
+    // §4.4 muted while playing: hands over the headphones, dimmer aura.
+    if (State.volume.muted) return { pose: "mute", aura: ["#7C5CFF", 0.25] };
+    return CATALOG["media-playing"];
+  }
+  if (conds["media-paused"]) return CATALOG["media-paused"];
+  if (t && nowMs < t.until) return withOpts(t);
+  return null;
+}
+
+/** Brightness at or above this reads as a happy squint (spec §4.1 "at high values"). */
+const BRIGHT_SQUINT_AT = 0.75;
+
+/** Catalog entry with react() opts folded in (intensity + track-change colour). */
+function withOpts(t: NonNullable<typeof transient>): Resolved {
+  const base = CATALOG[t.kind];
+  // Spec §4.1: a bright screen makes Mochi squint happily at high values.
+  const pose =
+    base.pose ??
+    (t.kind === "brightness" && (t.intensity ?? 0) >= BRIGHT_SQUINT_AT ? "squint-happy" : undefined);
+  // Spec §4.1: the volume slider's bob amplitude follows the level.
+  const bob = t.kind === "volume" ? (t.intensity ?? 0) : undefined;
+  if (!base.aura) return { pose, bob };
+  const color = t.color ?? base.aura[0];
+  const intensity = t.intensity ?? base.aura[1];
+  return { pose, aura: [color, intensity], bob };
+}
+
+/** Called from the island frame loop AFTER the engine tick. */
+export function tickReactions(nowMs: number): void {
+  if (!engine) return;
+  if (transient && nowMs >= transient.until) transient = null;
+  if (!transient) {
+    const next = queue.dequeue(nowMs);
+    if (next) beginReaction(next.kind as ReactionKind, pendingOpts.get(next.kind));
+  }
+  const r = resolve(nowMs);
+  engine.setPoseOverride(r?.pose ?? null);
+  engine.setAura(r?.aura?.[0] ?? null, r?.aura?.[1] ?? 0);
+  engine.setProp(
+    conds["media-playing"] || conds["media-paused"] ? "headphones"
+    : State.droppedFile ? "folder"
+    : null,
+  );
+  engine.setBob(r?.bob ?? 0);
+  // §4.4: the beat amplitude grows with the playing volume.
+  engine.setBeatAmp(conds["media-playing"] ? 0.5 + 0.7 * State.volume.level : 1);
+  engine.setBadge(r?.badge ?? engine.cfg.badge);
+  engine.setReactionDeadline(transient ? transient.until : 0);
+}
+
+// dev harness: ?reactions=1 — chip row firing every kind/condition on the primary engine.
+function installHarness() {
+  const on = new Set<string>();
+  const row = document.createElement("div");
+  row.style.cssText =
+    "position:fixed;bottom:0;left:0;right:0;z-index:99999;display:flex;flex-wrap:wrap;" +
+    "gap:2px;padding:3px;background:rgba(0,0,0,.65)";
+  for (const kind of Object.keys(CATALOG) as ReactionKind[]) {
+    const chip = document.createElement("button");
+    chip.textContent = kind;
+    chip.style.cssText =
+      "font:10px/1 system-ui;padding:3px 4px;background:#1A1412;color:#fff;" +
+      "border:1px solid #555;border-radius:4px;cursor:pointer";
+    chip.onclick = () => {
+      if (CONDITION_KINDS.has(kind)) {
+        const next = !on.has(kind);
+        if (next) on.add(kind); else on.delete(kind);
+        chip.style.background = next ? "#7C5CFF" : "#1A1412";
+        setCondition(kind as ConditionKind, next);
+      } else {
+        react(kind, { intensity: 0.8 });
+      }
+    };
+    row.appendChild(chip);
+  }
+  document.body.appendChild(row);
+}
+if (typeof location !== "undefined" && new URLSearchParams(location.search).has("reactions") && document.body) {
+  installHarness();
+}

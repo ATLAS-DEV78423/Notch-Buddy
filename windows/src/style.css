@@ -1,0 +1,2780 @@
+/* Coucou for Windows — same palette, sizes and type scale as the macOS island.
+   Every colour below is copied from the Swift views. */
+
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+}
+
+/* Invisible strip that wakes the island when it is hidden. */
+#wake-strip {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  height: 6px;
+  background: transparent;
+}
+
+/* ── Island ─────────────────────────────────────────────────────────────── */
+
+#island {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  background: #000;
+  border-radius: 0 0 14px 14px;
+  overflow: visible;
+  will-change: width, height, transform;
+  contain: layout style paint;
+}
+
+#island-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  contain: layout paint;
+}
+
+#bot-canvas,
+#greeting-canvas {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Selected background effect, behind every island view. Sized by the frame
+   loop and clipped to the island shape by #island-clip. Hidden while `off`. */
+#bg-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  pointer-events: none;
+}
+
+/* The drop sequence. Sits under the header and takes over the island body; it
+   cross-fades in and out, so the last frame stays up while the views return. */
+#upload-layer {
+  position: absolute;
+  top: 0;
+  width: 640px;
+  height: 176px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-in-out;
+}
+
+#upload-layer.on {
+  opacity: 1;
+}
+
+#upload-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+#upload-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+/* Invisible hit areas over the buttons the canvas paints. */
+.upload-hit {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* The ordinary views step aside while the sequence owns the body. */
+#views.hidden-by-upload {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-in-out;
+}
+
+#bot-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(6px);
+  transition: opacity 0.4s ease-in-out, background 0.4s ease-in-out;
+}
+
+#countdown {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  width: 0;
+}
+
+/* Compact mini Mochis, to the right of the notch. Two or fewer sit in one row
+   level with the battery — their centres on the island's mid-line; three or
+   four keep the 2×2 grid, itself centred on that line. The inline left/top
+   from applyGeometry() right-anchor the box at w−25.5 and centre it on the
+   battery's line. */
+#mini-grid {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 13px 13px;
+  grid-auto-rows: 13px;
+  gap: 3px;
+  width: 29px;
+  height: 29px;
+  pointer-events: none;
+  transition: opacity 0.25s ease-in-out;
+}
+#mini-grid[data-layout="row"] {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  height: 13px;
+}
+
+/* Compact status strip — timer / media / battery, between Mochi (canvas ends
+   ~x57) and the mini grid (starts x233.5). Both edges measured to the
+   NEIGHBOURING element's near edge: left gap 62 − 57 = 5px, right gap
+   233.5 − 226 = 7.5px. Right-aligned: overflow is absorbed by .cs-media
+   (shrink 1) long before .cs-battery (shrink 0.25) clips; timer never shrinks. */
+#compact-status {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 62px;
+  right: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  overflow: hidden;
+  font: 500 11px var(--font);
+  color: var(--dim-3);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease-in-out;
+}
+#compact-status .cs-timer {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+#compact-status .cs-media {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#compact-status .cs-battery {
+  flex: 0 0.25 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+#compact-status .cs-battery .bat-label { color: var(--dim-3); }
+
+/* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
+   hands, badges and particles are not cut off. */
+.mini {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.mini canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* ── Content shell (expanded) ───────────────────────────────────────────── */
+
+#content {
+  position: absolute;
+  inset: 0;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 0.2s ease-in-out;
+}
+
+#header {
+  height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  margin: 0 -10px;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.tabs {
+  display: flex;
+  gap: 5px;
+  padding-left: 14px;
+}
+
+.tab {
+  width: 30px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  border-radius: 11px;
+  color: var(--dim-2);
+  cursor: default;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #b0b5be;
+}
+
+.tab.on {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+  padding-right: 16px;
+}
+
+.header-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--dim-2);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.header-actions button.on {
+  color: var(--ink);
+}
+
+/* ── Header tab groups ──────────────────────────────────────────────────── */
+
+.tab-groups { position: relative; display: flex; gap: 4px; margin-left: 10px; }
+.tab-group { padding: 4px 10px; border-radius: 8px; font-size: 11px; color: #8E939C; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
+.tab-group.active { background: #1D1F23; color: #F5F6F8; }
+.tab-seg-thumb { position: absolute; top: 0; left: 0; height: 100%; border-radius: 8px; background: var(--tab-on); transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1), width 300ms cubic-bezier(0.23, 1, 0.32, 1); pointer-events: none; }
+.tab-groups .tab-group { position: relative; } /* labels above the thumb */
+.tab-groups .tab-group.active { background: transparent; color: var(--ink); } /* thumb carries the fill */
+@media (prefers-reduced-motion: reduce) { .tab-seg-thumb { transition: none; } }
+.sub-view-pills { display: flex; gap: 4px; margin-top: 4px; margin-left: 10px; }
+.sub-view-pill { padding: 2px 8px; border-radius: 6px; font-size: 10px; color: #6B7079; cursor: pointer; border: 0; background: transparent; font-family: inherit; }
+.sub-view-pill.active { background: #1D1F23; color: #F5F6F8; }
+
+#views {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.16s ease-in, transform 0.16s ease-in;
+  contain: layout style;
+}
+
+.view.on {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  /* Incoming starts at 120 ms — overlapping the 160 ms outgoing fade, so the
+     handoff is continuous instead of blinking through a blank frame. */
+  transition: opacity 0.3s ease-out 0.12s, transform 0.3s cubic-bezier(0.3, 1.2, 0.4, 1) 0.12s;
+}
+
+/* Task 6 exit seam — the outgoing view blurs and shrinks out (100 ms) before it
+   drops back to the base .view state. island.ts toggles the class and clears it
+   on animationend; enter stays the existing (slower) crossfade, so out is
+   snappier than in. */
+.view-leaving {
+  animation: view-out 100ms ease-in forwards;
+}
+
+@keyframes view-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0) scale(0.98);
+    filter: blur(4px);
+  }
+}
+
+/* Staggered row enter — SPEC §4: 35 ms per item. Rows opt in with
+   class="stagger" and an inline style="--i:N" index. */
+.view.on .stagger {
+  animation: row-in 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  animation-delay: calc(120ms + var(--i, 0) * 35ms);
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A view that is not on is only transparent, not gone: an infinite animation
+   inside it (the drop frame's marching dashes) would keep the webview
+   repainting every frame for as long as the app runs, island hidden or not. */
+.view:not(.on) * {
+  animation-play-state: paused;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.card {
+  position: relative;
+  height: 100%;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+.card.wash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    280px 280px at 50% 130%,
+    var(--wash) 0%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  pointer-events: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  font: 500 12.5px var(--font);
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: transform 0.08s ease-out, background 0.12s ease-out;
+}
+
+.btn:active {
+  transform: scale(0.94);
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #0b0c0e;
+}
+
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-2);
+}
+
+.btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn .kbd {
+  font-size: 10.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+
+.btn.primary .kbd {
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.btn.secondary .kbd {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Unified press feedback — every control presses like .btn already does. */
+.pill:active,
+.tab-group:active,
+.sub-view-pill:active,
+.cc-toggle:active,
+.bt-btn:active,
+.bt-refresh:active,
+.seg button:active,
+.icon-btn:active,
+.swatch:active,
+.fx-opt:active {
+  transform: scale(0.94);
+}
+
+.tab-group,
+.sub-view-pill,
+.cc-toggle,
+.bt-btn,
+.bt-refresh,
+.seg button,
+.icon-btn,
+.swatch,
+.fx-opt {
+  transition: transform 0.08s ease-out, background 0.12s ease-out, color 0.12s ease-out,
+    border-color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
+
+/* Press feedback the unified block missed — 13 controls, same 0.94 / 80 ms as .btn;
+   transform-only. .widget excluded: .view.on .stagger's fill-mode both locks its transform.
+   .media-controls is excluded too: its .mc-btn carries its own deeper press spring. */
+.tab:active, .header-actions button:active, .link-btn:active,
+.cc-icon-btn:active, .task-del:active,
+.banner-open:active, .banner-close:active, .int-more:active, .int-back:active,
+.int-page:active, .int-pill:active, .int-link:active { transform: scale(0.94); }
+.tab, .header-actions button, .link-btn, .cc-icon-btn,
+.task-del, .banner-open, .banner-close, .int-more, .int-back, .int-page,
+.int-pill, .int-link { transition: transform 0.08s ease-out; }
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.icon-btn {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--dim-4);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+/* ── Overview ───────────────────────────────────────────────────────────── */
+
+.overview {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.overview > .left {
+  flex: 0 0 322px;
+  width: 322px;
+}
+
+.overview > .right {
+  flex: 1 1 auto;
+}
+
+.card-body {
+  position: relative;
+  z-index: 1;
+  padding-top: 10px;
+}
+
+.who {
+  padding: 0 36px 0 108px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.who .name {
+  font: 600 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who .count {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.jump {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+}
+
+/* Ticker */
+
+.ticker {
+  position: relative;
+  height: 44px;
+  margin: 6px 12px 0 108px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 12%,
+    #000 85%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 85%, transparent 100%);
+}
+
+.ticker-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform-origin: left center;
+  will-change: transform, opacity;
+}
+
+.ticker-row .tick-icon {
+  width: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 12px;
+  color: var(--dim-2);
+}
+
+.ticker-row .tick-text {
+  display: block;
+  font: 500 13px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Ticker marquee (long steps) ─────────────────────────────────────────────
+   A row whose text overflows its box scrolls left↔right with holds (ping-pong,
+   no jump). ticker.ts measures the overflow and writes --mq-distance /
+   --mq-duration; the animation itself is CSS. The inner .mq is the moving
+   content, the .tick-text (and the CallChip's .call-chip__text) its clip box. */
+.mq {
+  display: inline-block;
+  white-space: nowrap;
+}
+.marquee-on .mq {
+  animation: marquee var(--mq-duration, 5s) linear infinite;
+}
+.marquee-on .tick-text,
+.marquee-on .call-chip__text {
+  -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+@keyframes marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  42%,
+  55% {
+    transform: translateX(calc(-1 * var(--mq-distance, 0px)));
+  }
+  80%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Shimmer sweep, 2.2 s — same as TickerShimmerText / ShimmeringText */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #7c818a 0%,
+    #f2f3f5 40%,
+    #7c818a 70%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+/* ── React Bits port: ThoughtLine ─────────────────────────────────────────────
+   The working line of the overview's who-row. The breath, the shimmer (the
+   existing .shimmer sweep) and the settle chord are CSS; the clock is driven by
+   the host view's frame tick — see ui/thoughtline.ts. Geometry is unchanged:
+   the line sits inside the existing who row, at the who row's type size. */
+
+.thought-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  /* The line, not the agent name or the step count, absorbs a narrow card: it
+     ellipsises rather than colliding with the count pushed right by auto. */
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 500 12px var(--font);
+  color: var(--dim-2);
+}
+
+.thought-line__glyph {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  width: 11px;
+  height: 11px;
+  color: var(--dim-3);
+}
+
+.thought-line__glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* One breath, up and down — the reference's 1.6 s / ease-in-out pair. */
+.thought-line[data-working] .thought-line__glyph {
+  animation: tl-breath 1.6s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+}
+
+@keyframes tl-breath {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thought-line__label {
+  display: inline-grid;
+  /* min(0) on the track is what lets the stacked texts shrink below their
+     max-content width; a plain grid track refuses and overflows instead. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Working and settled share a cell: the crossfade is the settle chord. */
+.thought-line__text {
+  grid-area: 1 / 1;
+  min-width: 0;
+  max-width: 210px;
+  opacity: 0;
+  filter: blur(2px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    opacity 350ms cubic-bezier(0.23, 1, 0.32, 1),
+    filter 350ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.thought-line__text[data-active] {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.thought-line__text--done[data-active] {
+  opacity: 0.75;
+}
+
+/* The live clock: only while working — the settled sentence carries the time. */
+.thought-line__timer {
+  font: 400 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+
+.thought-line[data-working] .thought-line__timer {
+  opacity: 0.55;
+}
+
+.thought-line__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── React Bits port: SpringCheck ─────────────────────────────────────────────
+   The pomodoro task control. The reference's readings — fill `scale(t)`, box
+   swell `1 + 0.35·max(0, t−1)`, tick `1−t`, words toward 0.42, rule
+   `(t − lag)/(0.84 − lag)` — are expressed as CSS on one `data-on` attribute
+   rather than a `motion` spring, because no per-view clock exists to step one.
+   The swell is its own keyframe so it can be restarted by re-adding
+   `data-swell`, exactly like the reference's `animate(t, target)`. */
+
+.spring-check {
+  --sc-box: 15px;
+  --sc-radius: 5px;
+  --sc-ring: 1.6px;
+  --sc-done: 0.45;
+  /* One rebound, the reference's `bounce: 0.2` read as a curve. */
+  --sc-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --sc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spring-check__press {
+  flex: none;
+  width: var(--sc-box);
+  height: var(--sc-box);
+  border-radius: var(--sc-radius);
+  transition: transform 160ms var(--sc-ease-out);
+}
+
+.spring-check[data-pressed] .spring-check__press {
+  transform: scale(0.9);
+}
+
+.spring-check:focus-visible .spring-check__press {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 2px;
+}
+
+.spring-check__box {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.spring-check__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 var(--sc-ring) currentColor;
+  opacity: 0.3;
+  transition: opacity 120ms ease;
+}
+
+.spring-check:hover .spring-check__ring {
+  opacity: 0.5;
+}
+
+.spring-check__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scale(0);
+  transform-origin: center;
+}
+
+.spring-check__tick {
+  position: relative;
+  width: 68%;
+  height: 68%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--card-flat);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+/* Staggered exactly like the reference: the tick waits for the fill to arrive. */
+.spring-check[data-ready] .spring-check__fill {
+  transition: transform 320ms var(--sc-ease);
+}
+
+.spring-check[data-ready] .spring-check__tick {
+  transition: stroke-dashoffset 220ms var(--sc-ease-out) 70ms;
+}
+
+.spring-check[data-on] .spring-check__fill {
+  transform: scale(1);
+}
+
+.spring-check[data-on] .spring-check__tick {
+  stroke-dashoffset: 0;
+}
+
+.spring-check__label {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.spring-check__word {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 320ms var(--sc-ease-out);
+}
+
+.spring-check[data-on] .spring-check__word {
+  opacity: var(--sc-done);
+}
+
+/* The strike is drawn, not inherited — it wipes the label's exact width. */
+.spring-check__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  margin-top: -0.75px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.spring-check[data-ready] .spring-check__rule {
+  transition: transform 260ms var(--sc-ease-out) 90ms;
+}
+
+.spring-check[data-on] .spring-check__rule {
+  transform: scaleX(1);
+}
+
+@keyframes sc-swell {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.32);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.spring-check[data-swell] .spring-check__box {
+  animation: sc-swell 360ms var(--sc-ease-out);
+}
+
+/* ── Agent pills ────────────────────────────────────────────────────────── */
+
+.pills {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 28px;
+  gap: 4px;
+  align-content: center;
+  padding: 0 8px;
+}
+
+.pill {
+  position: relative;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--card-flat);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  cursor: default;
+  transition: transform 0.2s cubic-bezier(0.3, 1.2, 0.4, 1), background 0.18s, border-color 0.18s,
+    box-shadow 0.18s, filter 0.18s;
+}
+
+.pill .mini {
+  margin-left: 7px;
+}
+
+.pill .lbl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  pointer-events: none;
+}
+
+.pill:hover {
+  transform: scale(1.04);
+  filter: brightness(1.06);
+}
+
+.pill-badge {
+  position: absolute;
+  top: -3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0b0c0e;
+  display: grid;
+  place-items: center;
+}
+
+.pill-badge i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #000;
+}
+
+.pill-badge svg {
+  width: 6px;
+  height: 6px;
+}
+
+/* ── Generic text blocks ────────────────────────────────────────────────── */
+
+.title {
+  font: 600 15px var(--font);
+}
+
+.sub {
+  font: 400 13px var(--font);
+  color: var(--dim);
+}
+
+.detail {
+  font: 400 12px var(--font);
+  color: var(--red-text);
+}
+
+.who-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 400 12px var(--font);
+  color: var(--dim-2);
+}
+
+.who-row .n {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.code {
+  font: 400 12px var(--mono);
+  color: #e8e9ec;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 5px 10px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.stack {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+}
+
+/* ── Settings view (in-island) ──────────────────────────────────────────── */
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 12.5px var(--font);
+  color: #c5c8cd;
+}
+
+/* ── React Bits port: SquishSwitch ────────────────────────────────────────────
+   The same track, the same 14 px thumb, the same 0.18 s settle — but the thumb
+   is now an element that stretches with the speed of its own travel and can be
+   dragged (ui/squishswitch.ts). Geometry moves into `--sw-*` so the same module
+   can drive the settings window's 36×20 track without knowing which it has. */
+
+.switch {
+  --sw-w: 32px;
+  --sw-h: 18px;
+  --sw-inset: 2px;
+  --sw-thumb: 14px;
+  --sw-travel: 14px;
+
+  position: relative;
+  display: block;
+  width: var(--sw-w);
+  height: var(--sw-h);
+  border-radius: calc(var(--sw-h) / 2);
+  background: rgba(255, 255, 255, 0.15);
+  flex: 0 0 var(--sw-w);
+  transition: background 0.18s;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  touch-action: pan-y;
+}
+
+.switch.on {
+  background: var(--green);
+}
+
+.switch__thumb {
+  position: absolute;
+  top: var(--sw-inset);
+  left: var(--sw-inset);
+  width: var(--sw-thumb);
+  height: var(--sw-thumb);
+  transform: translateX(0);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.switch.on .switch__thumb {
+  transform: translateX(var(--sw-travel));
+}
+
+/* Mid-drag the finger owns the position: no transition, no rounding to the ends. */
+.switch[data-held] .switch__thumb {
+  transform: translateX(var(--sw-x, 0px));
+  transition: none;
+}
+
+.switch__thumb-in {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  transform: scaleX(var(--sw-sx, 1)) scaleY(var(--sw-sy, 1));
+  transform-origin: center;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.switch[data-held] .switch__thumb-in {
+  transition: none;
+}
+
+/* A tap never had a velocity, so it gets one swell instead. */
+.switch[data-squish] .switch__thumb-in {
+  animation: sw-squish 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes sw-squish {
+  0%,
+  100% {
+    transform: scaleX(1) scaleY(1);
+  }
+  35% {
+    transform: scaleX(1.26) scaleY(0.82);
+  }
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  width: 72px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.seg {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.seg button {
+  font: 400 11px var(--font);
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim-3);
+  cursor: default;
+}
+
+.seg button.on {
+  background: #252830;
+  color: var(--ink);
+}
+
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+/* The new views clear Mochi's corner (botX 60 → canvas reaches ~100px): content
+   starts at 110px like the shipped views' stack padding, so she never sits on a
+   label or a widget. */
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 12px 12px 100px; }
+.widget { background: #1D1F23; border-radius: 12px; padding: 10px; cursor: pointer; transition: transform 0.15s; }
+.widget:hover { transform: scale(1.02); }
+.widget-title { font-size: 10px; color: #8E939C; margin-bottom: 6px; text-transform: uppercase; }
+.widget-value { font-size: 13px; color: #F5F6F8; }
+.widget-battery { display: flex; align-items: center; height: 20px; }
+.widget-empty { font-size: 11px; color: #6B7079; }
+.widget-media { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #F5F6F8; }
+.widget-album-art { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex: none; }
+
+/* ── Weather ───────────────────────────────────────────────────────────── */
+
+.view-weather { padding: 16px; text-align: center; }
+.weather-temp { font-size: 36px; font-weight: 600; color: var(--ink); }
+.weather-condition { font-size: 13px; color: var(--dim-2); margin: 4px 0 10px; }
+.weather-details { font-size: 12px; color: var(--dim-2); line-height: 1.6; }
+.weather-empty { font-size: 13px; color: var(--dim-2); }
+
+/* ── In-island banners (clipboard URL, battery notices) ─────────────────── */
+
+.banners {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+.banner {
+  position: relative;     /* the fuse burns along the pill's own edge */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #252830;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;       /* …and is clipped by it */
+  padding: 6px 8px 6px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font: 500 12px var(--font);
+  color: var(--ink);
+  max-width: 520px;
+  transform: translateY(var(--toast-y, 0px));
+  transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1), opacity 220ms ease;
+}
+.banner-text { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.banner-open {
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: #fff;
+  cursor: pointer;
+  font: 600 11px var(--font);
+}
+.banner-close {
+  background: transparent;
+  border: 0;
+  color: var(--dim-2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.banner-close:hover { color: var(--ink); }
+
+/* ── React Bits port: SwipeToast (the banner's fuse, swipe and exit chord) ─── */
+
+/* The card tracks the finger 1:1; an abandoned swipe gets the overshoot back on
+   release, and a departure is the card leaving the island's top edge. */
+.banner[data-swiping] { transition: none; }
+.banner[data-returning] {
+  transition: transform 300ms cubic-bezier(0.34, 1.45, 0.5, 1), opacity 220ms ease;
+}
+.banner[data-leaving="up"] { transform: translateY(-170%); opacity: 0; }
+.banner[data-leaving="down"] { transform: translateY(240%); opacity: 0; }
+
+/* The fuse IS the time-to-live: its animation is exactly as long as the banner
+   has left, and freezing it under the pointer freezes the deadline too
+   (`State.pauseBanner`), so the line cannot disagree with the dismissal. */
+.banner-fuse {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--amber) 14%,
+    var(--amber) 86%,
+    transparent 100%
+  );
+  transform-origin: left center;
+  pointer-events: none;
+  animation: banner-fuse var(--fuse-duration, 6000ms) linear forwards;
+}
+@keyframes banner-fuse {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.banner[data-frozen] .banner-fuse { animation-play-state: paused; }
+
+/* ── React Bits port: CallChip (the overview's current step) ─────────────────
+   Row B of the ticker is a chip: a fill wipe over the nominal step time, a live
+   ms readout, a green wash + tick on done and a frozen red wash + shake on
+   error. JS side: ui/callchip.ts, driven by the ticker's own frame tick — no
+   timers, no second rAF loop. */
+
+.call-chip {
+  --cc-size: 22px;
+  --cc-font: 12px;
+  --cc-pad: 8px;
+  --cc-gap: 5px;
+  --cc-radius: 8px;
+  --cc-expected: 2500ms;
+  --cc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cc-gap);
+  height: var(--cc-size);
+  padding: 0 var(--cc-pad);
+  border-radius: var(--cc-radius);
+  overflow: hidden;
+  background: var(--tab-on);
+  color: var(--ink);
+  font: 500 var(--cc-font) var(--font);
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 100%;
+  user-select: none;
+}
+.call-chip__fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+  background: rgba(245, 246, 248, 0.08); /* ink at the reference's 8% — no color-mix */
+}
+.call-chip[data-status="running"] .call-chip__fill {
+  transition: transform var(--cc-expected) linear;
+}
+.call-chip[data-status="done"] .call-chip__fill {
+  background: var(--wash-ok);
+  transition:
+    transform 200ms var(--cc-ease-out),
+    background-color 120ms ease;
+}
+.call-chip[data-status="error"] .call-chip__fill {
+  background: var(--wash-err);
+  transition: background-color 200ms ease;
+}
+.call-chip__slot {
+  position: relative;
+  flex: none;
+  width: calc(var(--cc-font) + 2px);
+  height: calc(var(--cc-font) + 2px);
+  overflow: hidden;
+}
+.call-chip__glyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: translateY(70%);
+  filter: blur(3px);
+}
+.call-chip__glyph[data-state="in"] {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+  transition:
+    opacity 240ms var(--cc-ease-out),
+    transform 240ms var(--cc-ease-out),
+    filter 240ms var(--cc-ease-out);
+}
+.call-chip__glyph[data-state="out"] {
+  transform: translateY(-70%);
+  transition:
+    opacity 160ms var(--cc-ease-out),
+    transform 160ms var(--cc-ease-out),
+    filter 160ms var(--cc-ease-out);
+}
+.call-chip[data-status="done"] .call-chip__glyph[data-state="in"] { color: var(--green); }
+.call-chip[data-status="error"] .call-chip__glyph[data-state="in"] { color: var(--red); }
+.call-chip__text {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.call-chip__timer {
+  position: relative;
+  flex: none;
+  min-width: 6ch;
+  text-align: right;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+.call-chip__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-chip__glyph {
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+/* ── Media player ───────────────────────────────────────────────────────── */
+
+.view-media { display: flex; gap: 14px; padding: 16px 16px 16px 100px; align-items: center; }
+.view-media-empty { padding: 16px 16px 16px 100px; font-size: 13px; color: var(--dim-2); }
+
+/* Album art: a soft card that cross-fades when the track changes and floats
+   gently while the music plays. */
+.media-art-wrap {
+  position: relative;
+  flex: none;
+  width: 120px;
+  height: 120px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--tab-on);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+.media-album-art { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-album-art.art-in { animation: media-art-in 520ms cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes media-art-in {
+  from { opacity: 0; transform: scale(1.06); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.media-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.media-track { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-track.tick { animation: media-tick 480ms cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes media-tick {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.media-artist { font-size: 12px; color: var(--dim-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Scrubber: 5 px track, a thumb that only shows on hover/press, and a fill
+   with a soft leading glow. The thumb rides `left` from the view's sync(). */
+.media-progress-row { display: flex; align-items: center; gap: 9px; margin: 9px 0 10px; }
+.media-progress {
+  position: relative;
+  flex: 1;
+  height: 5px;
+  background: var(--tab-on);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: height 0.16s ease-out;
+}
+.media-progress:hover { height: 7px; }
+.media-progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+}
+.media-progress-knob {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.16s ease-out, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    left 420ms cubic-bezier(0.23, 1, 0.32, 1);
+  pointer-events: none;
+}
+.media-progress:hover .media-progress-knob,
+.media-progress:active .media-progress-knob { opacity: 1; transform: scale(1); }
+.media-progress:active { height: 7px; }
+.media-time { font: 500 10.5px var(--font); font-variant-numeric: tabular-nums; color: var(--dim-2); flex: none; }
+
+/* Transport — Apple now-playing style: flat solid glyphs on the card, wide
+   even spacing, the play/pause a large anchor. Press = a real squash. */
+.media-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.media-titles { flex: 1 1 auto; min-width: 0; }
+.mc-vol {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background-color 0.16s ease-out, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 0.16s ease-out;
+}
+.mc-vol:hover { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+.mc-vol:active { transform: scale(0.86); }
+.mc-vol:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mc-vol svg { display: block; }
+
+.media-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 2px 0;
+}
+.mc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 0.16s ease-out, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.mc-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.mc-btn:active { transform: scale(0.84); }
+.mc-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mc-btn svg { display: block; }
+.mc-play {
+  width: 54px;
+  height: 48px;
+  color: #fff;
+}
+.mc-play:hover { background: rgba(255, 255, 255, 0.08); }
+.mc-play.playing svg { animation: mc-play-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes mc-play-pop {
+  0% { transform: scale(0.72); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-album-art.art-in,
+  .media-track.tick,
+  .mc-play.playing svg { animation: none; }
+  .mc-btn, .mc-vol, .media-progress-knob, .media-progress-fill { transition: none; }
+  .mc-btn:active, .mc-vol:active { transform: none; }
+}
+
+/* ── Agent session view (the main agent card) ──────────────────────────────
+   Header with the agent, its live state (ThoughtLine), and the model/thinking
+   chips when the agent reports them; a click-through step rail; and the
+   viewer for the selected step (diff / command / target), with the pending
+   permission inline when the agent can receive a decision. */
+
+.session { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: 108px; }
+.session-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.session-head .name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.session-head .chip {
+  font: 500 9.5px var(--font);
+  color: var(--dim-2);
+  background: var(--tab-on);
+  border-radius: 999px;
+  padding: 1.5px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+.session-head .count { font: 500 10px var(--font); color: var(--dim-3); font-variant-numeric: tabular-nums; margin-left: auto; }
+
+.approval-inline {
+  display: none;
+  border: 1px solid rgba(245, 165, 36, 0.35);
+  background: rgba(245, 165, 36, 0.1);
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+.approval-inline .cmd-line {
+  font: 500 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+.approval-inline .actions { display: flex; gap: 6px; }
+.approval-inline .actions .btn { flex: 1; }
+.session-note { font-size: 10.5px; color: var(--dim-2); }
+
+.step-rail {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.step-rail::-webkit-scrollbar { display: none; }
+.step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 130px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--tab-on);
+  color: var(--dim-2);
+  cursor: pointer;
+  font: 500 10px var(--font);
+  transition: background-color 0.16s ease-out, color 0.16s ease-out, border-color 0.16s ease-out,
+    transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.step-chip:hover { background: #252830; color: var(--ink); }
+.step-chip:active { transform: scale(0.94); }
+.step-chip.on { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+.step-chip .step-glyph { font-size: 10px; line-height: 1; }
+.step-chip svg { display: block; }
+.step-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.step-view {
+  min-height: 0;
+  overflow: hidden;
+  background: var(--card-flat);
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+}
+.diff-head { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-bottom: 1px solid var(--hairline); }
+.diff-path { font: 600 10.5px var(--font); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-stat { margin-left: auto; display: flex; gap: 6px; font: 600 10px var(--font); font-variant-numeric: tabular-nums; flex: none; }
+.diff-stat .add { color: var(--green); }
+.diff-stat .del { color: var(--red); }
+.diff-body { min-height: 0; overflow: hidden; padding: 4px 0; }
+.diff-row {
+  display: flex;
+  gap: 6px;
+  padding: 0 9px;
+  font: 400 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.5;
+  white-space: pre;
+}
+.diff-sign { flex: none; width: 8px; text-align: center; color: var(--dim-4); }
+.diff-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.diff-row[data-k="add"] { background: rgba(34, 197, 94, 0.14); }
+.diff-row[data-k="add"] .diff-sign { color: var(--green); }
+.diff-row[data-k="del"] { background: rgba(244, 80, 94, 0.14); }
+.diff-row[data-k="del"] .diff-sign { color: var(--red); }
+.diff-row[data-k="ctx"] { color: var(--dim-2); }
+.diff-row[data-k="hunk"] { color: var(--dim-4); }
+
+.cmd-block { display: flex; gap: 6px; padding: 8px 9px; align-items: baseline; }
+.cmd-prompt { color: var(--green); font: 600 11px ui-monospace, Menlo, monospace; flex: none; }
+.cmd-text {
+  font: 400 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.step-plain { padding: 9px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.step-plain-label { font-size: 11.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.step-plain-target { font: 400 10.5px ui-monospace, Menlo, monospace; color: var(--dim-2); overflow: hidden; text-overflow: ellipsis; }
+
+@media (prefers-reduced-motion: reduce) {
+  .step-chip { transition: none; }
+  .step-chip:active { transform: none; }
+}
+
+/* ── System stats ───────────────────────────────────────────────────────── */
+
+.view-stats { padding: 16px 16px 16px 100px; }
+.stat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.stat-label { font-size: 11px; color: var(--dim-2); width: 44px; flex: none; }
+.stat-bar { flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; overflow: hidden; }
+.stat-fill { height: 100%; width: 100%; background: var(--accent); border-radius: 3px; transform-origin: left center; }
+.stat-value { font-size: 11px; color: var(--ink); width: 56px; flex: none; text-align: right; }
+
+/* ── Control center ───────────────────────────────────────────────────────── */
+
+.view-control-center { padding: 16px 16px 16px 100px; }
+.cc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cc-label { font-size: 11px; color: var(--dim-2); width: 56px; flex: none; }
+.cc-slider { position: relative; flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; cursor: pointer; touch-action: none; transition: transform 0.12s ease-out; }
+.cc-slider.dragging { transform: scaleY(1.5); }
+.cc-slider-fill { height: 100%; width: 100%; background: var(--accent); border-radius: 3px; transform-origin: left center; transition: transform 250ms cubic-bezier(0.23, 1, 0.32, 1); }
+.cc-slider-knob { position: absolute; top: 50%; width: 14px; height: 14px; margin-top: -7px; margin-left: -7px; left: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card); transition: left 250ms cubic-bezier(0.23, 1, 0.32, 1); pointer-events: none; }
+.cc-slider.dragging .cc-slider-knob { transition: none; }
+.cc-slider.dragging .cc-slider-fill { transition: none; box-shadow: 0 0 10px var(--accent-soft); }
+.cc-slider.dragging .cc-slider-knob { box-shadow: 0 0 0 2px var(--card), 0 0 10px var(--accent-soft); }
+.cc-value { font: 500 11px var(--font); font-variant-numeric: tabular-nums; color: var(--dim-2); width: 4ch; flex: none; opacity: 0; transition: opacity 250ms ease-out; }
+.cc-value[data-on] { opacity: 1; transition: opacity 150ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .cc-slider-knob, .cc-slider-fill, .cc-value, .cc-value[data-on] { transition: none; } }
+.cc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 3px;
+  cursor: pointer;
+  color: var(--dim-2);
+  border-radius: 6px;
+  transition: background-color 0.16s ease-out, color 0.16s ease-out,
+    transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cc-icon-btn:hover { background: var(--tab-on); color: var(--ink); }
+.cc-icon-btn:active { transform: scale(0.86); }
+.cc-icon-btn svg { display: block; }
+
+.cc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--tab-on);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--dim-2);
+  cursor: pointer;
+  font: 600 11.5px var(--font);
+  transition: background-color 0.2s ease-out, color 0.2s ease-out,
+    transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.3s ease-out;
+}
+.cc-toggle:hover { background: #252830; }
+.cc-toggle:active { transform: scale(0.94); }
+.cc-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cc-toggle:disabled { cursor: default; opacity: 0.8; }
+.cc-toggle.on { background: var(--accent-soft); color: var(--accent); }
+.cc-glyph { position: relative; display: inline-flex; flex: none; }
+.cc-glyph svg { display: block; }
+
+/* Do Not Disturb on: an indigo wash (the dnd-sleep aura hue) and two z's
+   drifting off the moon — the same cue Pip gets, one glyph over. */
+.cc-toggle.dnd.on { background: rgba(110, 128, 184, 0.22); color: #9fb2e3; }
+.cc-toggle.dnd.on .cc-glyph::before,
+.cc-toggle.dnd.on .cc-glyph::after {
+  content: "z";
+  position: absolute;
+  top: -3px;
+  right: -6px;
+  font: 700 8px/1 var(--font);
+  color: #9fb2e3;
+  opacity: 0;
+  animation: cc-z 2.6s ease-out infinite;
+  pointer-events: none;
+}
+.cc-toggle.dnd.on .cc-glyph::after { font-size: 6px; animation-delay: 1.3s; }
+@keyframes cc-z {
+  0% { opacity: 0; transform: translate(0, 2px) scale(0.7); }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(5px, -10px) scale(1.05); }
+}
+
+/* Night light on: the warm night-light-on aura hue, breathing glow — a held
+   state indicator like the critical battery breathe, not decoration. */
+.cc-toggle.night.on {
+  background: rgba(255, 182, 107, 0.16);
+  color: #ffb66b;
+  animation: cc-warm-breathe 3.2s ease-in-out infinite;
+}
+@keyframes cc-warm-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 182, 107, 0); }
+  50% { box-shadow: 0 0 12px rgba(255, 182, 107, 0.35); }
+}
+
+/* Memory boost in flight: the sparkle whirls until the worker answers. */
+.cc-toggle.boosting { color: #6bd9ff; }
+.cc-toggle.boosting .cc-glyph svg { animation: cc-spin 0.9s linear infinite; }
+@keyframes cc-spin { to { transform: rotate(360deg); } }
+
+.cc-note { font-size: 11px; color: var(--dim-2); min-width: 72px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-icon-btn, .cc-toggle { transition: none; }
+  .cc-icon-btn:active, .cc-toggle:active { transform: none; }
+  .cc-toggle.dnd.on .cc-glyph::before,
+  .cc-toggle.night.on,
+  .cc-toggle.boosting .cc-glyph svg { animation: none; }
+  .cc-toggle.dnd.on .cc-glyph::after { animation: none; display: none; }
+}
+
+/* ── Battery glyph (Apple-style capsule + nub) ───────────────────────────── */
+/* One component for the dashboard widget, the compact strip and Bluetooth
+   rows (src/ui/batteryicon.ts). The fill rides scaleX so the tween costs
+   nothing; the tier flash is a one-shot keyframe replayed by class churn. */
+
+.bat-glyph {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  color: var(--ink);
+}
+
+.bat-track {
+  position: relative;
+  border: 1.5px solid var(--bat-ink, rgba(245, 246, 248, 0.55));
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  transition: border-color 0.3s ease-out;
+}
+
+.bat-fill {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  background: #f5f6f8;
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 0.4s ease-out;
+  will-change: transform;
+}
+
+.bat-nub {
+  flex: none;
+  background: var(--bat-ink, rgba(245, 246, 248, 0.55));
+  transition: background-color 0.3s ease-out;
+}
+
+.bat-bolt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.55);
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0;
+  color: #0a0a0a;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.65);
+  transition: opacity 0.28s ease-out, transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.bat-glyph[data-tier="charging"] .bat-bolt {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Tier → border/nub ink. High tiers stay white, low goes yellow, critical red. */
+.bat-glyph[data-tier="low"] {
+  --bat-ink: rgba(255, 214, 10, 0.75);
+}
+.bat-glyph[data-tier="critical"] {
+  --bat-ink: rgba(255, 69, 58, 0.85);
+}
+.bat-glyph[data-tier="charging"] {
+  --bat-ink: rgba(50, 215, 75, 0.8);
+}
+.bat-glyph[data-tier="critical"] .bat-fill {
+  animation: bat-critical-breathe 2.4s ease-in-out infinite;
+}
+.bat-glyph[data-tier="low"] .bat-fill {
+  animation: bat-low-breathe 3.2s ease-in-out infinite;
+}
+
+/* The tier-crossing flash: a quick bloom that settles back. */
+.bat-glyph.bat-pulse .bat-track {
+  animation: bat-pulse 620ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes bat-pulse {
+  0% { box-shadow: 0 0 0 0 currentColor; }
+  35% { box-shadow: 0 0 9px 1px currentColor; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes bat-critical-breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(0.62); }
+}
+@keyframes bat-low-breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(0.82); }
+}
+
+.bat-label {
+  font: 500 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim-2);
+  margin-left: 5px;
+}
+
+/* Mid-size variant for the dashboard widget / compact strip. */
+.bat-glyph.bat-md { --bat-scale: 1; }
+.bat-glyph.bat-sm .bat-label { font-size: 10px; margin-left: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bat-fill,
+  .bat-bolt,
+  .bat-glyph.bat-pulse .bat-track,
+  .bat-glyph[data-tier="critical"] .bat-fill,
+  .bat-glyph[data-tier="low"] .bat-fill {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ── Bluetooth ────────────────────────────────────────────────────────────── */
+
+.view-bluetooth { padding: 16px 16px 16px 100px; }
+.bt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bt-count { font-size: 11px; color: var(--dim-2); }
+.bt-refresh { background: var(--tab-on); border: 0; border-radius: 8px; padding: 4px 10px; color: var(--ink); cursor: pointer; font: 600 11px var(--font); }
+.bt-refresh:hover { background: #252830; }
+.bt-error { font-size: 11px; color: #F4505E; margin-bottom: 6px; }
+.bt-empty { font-size: 12px; color: var(--dim-2); padding: 8px 0; }
+.bt-device { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--tab-on); border-radius: 8px; margin-bottom: 6px; }
+.bt-icon { flex: none; width: 18px; text-align: center; font-size: 13px; line-height: 1; }
+.bt-name { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt-battery { flex: none; font-size: 11px; color: var(--dim-2); font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; }
+.bt-btn { flex: none; background: #252830; border: 0; border-radius: 999px; padding: 4px 10px; color: var(--ink); cursor: pointer; font: 600 11px var(--font); }
+.bt-btn:disabled { opacity: 0.45; cursor: default; }
+.bt-btn.pending::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: 1.5px solid var(--dim-2);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: bt-spin 0.7s linear infinite;
+}
+@keyframes bt-spin { to { transform: rotate(360deg); } }
+
+/* ── Timer (pomodoro + stopwatch) ─────────────────────────────────────────── */
+
+.view-pomodoro,
+.view-stopwatch { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.timer-display { font-size: 44px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
+.timer-controls { display: flex; gap: 8px; }
+.task-row { display: flex; gap: 6px; width: 100%; }
+.task-input { flex: 1 1 auto; min-width: 0; background: var(--tab-on); border: 0; border-radius: 8px; padding: 6px 8px; color: var(--ink); font: 400 12px var(--font); outline: none; }
+.task-input::placeholder { color: var(--dim-2); }
+.task-list { width: 100%; max-height: 64px; overflow-y: auto; text-align: left; content-visibility: auto; }
+.task { display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 12px; color: var(--ink); transition: color 0.32s cubic-bezier(0.23, 1, 0.32, 1); }
+/* The SpringCheck carries the label, the tick and the strike; the row only
+   dims their ink once the task is done. */
+.task.done { color: var(--dim-2); }
+.task .spring-check { flex: 1 1 auto; min-width: 0; }
+.task-del { flex: none; background: none; border: 0; padding: 0 2px; color: var(--dim-2); cursor: pointer; font-size: 13px; line-height: 1; }
+.task-del:hover { color: var(--ink); }
+
+/* ── Roll digits (pomodoro) ────────────────────────────────────────────────
+   The countdown is one slot per character, keyed from the right; only the
+   characters that changed animate (views.ts rollDigits). The second declared
+   curve of the plan lives here. */
+.pom-roll {
+  display: inline-flex;
+  height: 1em;
+  overflow: hidden;
+  perspective: 300px;
+  font-variant-numeric: tabular-nums;
+}
+.pom-digit {
+  position: relative;
+  display: inline-block;
+  height: 1em;
+  line-height: 1;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+.pom-digit > .pom-out {
+  position: absolute;
+  left: 0;
+  top: 0;
+  backface-visibility: hidden;
+}
+.pom-in {
+  display: inline-block;
+  animation: roll-in 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pom-out {
+  animation: roll-out 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes roll-in {
+  from {
+    transform: translateY(72%) rotateX(-50deg);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) rotateX(0deg);
+    opacity: 1;
+  }
+}
+@keyframes roll-out {
+  from {
+    transform: translateY(0) rotateX(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-72%) rotateX(50deg);
+    opacity: 0;
+  }
+}
+
+/* ── React Bits port: SwipeRow (the task row's delete gesture) ───────────────
+   A leftward drag reveals the Delete drawer with rubber-banded ends; past 60 %
+   (or a hard flick) the row folds first, then the rebuild drops it. JS side:
+   ui/swiperow.ts. The wrapper adds no padding, border or margin — the task
+   row's height budget (font 12, padding 3px 4px) stands unchanged. */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  /* Glue: fill the .task flex row the way the check + × pair did. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.swipe-row__drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 56px;
+  display: grid;
+  place-items: center;
+  background: var(--dim-5);
+}
+.swipe-row__drawer button {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 600 11px var(--font);
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+/* The Delete label brightens while the grip is past the commit point; the
+   button itself stays inert — the drag owns the gesture. */
+.swipe-row[data-armed] .swipe-row__drawer button { opacity: 1; }
+.swipe-row__surface {
+  position: relative;
+  background: transparent; /* the row's own look shows through */
+  /* Glue: same centering and gap the .task row gave its children. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1);
+  touch-action: pan-y; /* vertical scrolling still belongs to the list */
+}
+.swipe-row[data-dragging] .swipe-row__surface { transition: none; }
+.swipe-row[data-dragging],
+.swipe-row[data-dragging] * { user-select: none; }
+.swipe-row[data-phase="collapsing"] { transition: height 200ms ease, opacity 200ms ease; }
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+
+.grow {
+  flex: 1 1 auto;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ── Chat (prompt view) ─────────────────────────────────────────────────── */
+
+.chat-card {
+  overflow: hidden;
+}
+
+.chat-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 14px 84px;
+}
+
+.chip-row:empty {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font: 400 11.5px var(--font);
+  color: var(--ink-2);
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  transform: scale(1.06);
+  transition: border-color 0.3s ease-out 0.45s, transform 0.3s ease-out 0.45s;
+}
+
+.chip.settled {
+  border-color: rgba(255, 255, 255, 0);
+  transform: scale(1);
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6b5b, #f7b32b, #2dd4a7, #38bdf8, #a78bfa);
+}
+
+.chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  content-visibility: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.chat-row {
+  display: flex;
+}
+
+.chat-row.user {
+  justify-content: flex-end;
+  padding-left: 32px;
+}
+
+.bubble {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font: 400 12.5px var(--font);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.reply {
+  font: 400 12.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  padding-right: 8px;
+  user-select: text;
+}
+
+.typing {
+  display: flex;
+  gap: 4px;
+  padding: 4px 2px;
+}
+
+.typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dim-3);
+  animation: typing 0.9s ease-in-out infinite;
+}
+
+.typing i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.typing i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes typing {
+  0%, 100% { transform: scale(0.6); }
+  50% { transform: scale(1.2); }
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+.chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13px var(--font);
+  outline: none;
+  cursor: text;
+}
+
+.chat-input::placeholder {
+  color: var(--dim-3);
+}
+
+.send-btn {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #0b0c0e;
+  display: grid;
+  place-items: center;
+  cursor: default;
+  transition: transform 0.08s ease-out;
+}
+
+.send-btn:active {
+  transform: scale(0.94);
+}
+
+/* ── Drop zone ──────────────────────────────────────────────────────────── */
+
+.drop-card {
+  background: var(--card-flat);
+  border: 0;
+}
+
+.drop-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.drop-frame rect {
+  stroke: rgba(255, 255, 255, 0.13);
+  animation: dash-march 1.1s linear infinite, dash-breathe 7s ease-in-out infinite;
+}
+
+.drop-card.over {
+  background: radial-gradient(200px 200px at 50% 100%, rgba(34, 197, 94, 0.13), transparent 70%),
+    var(--card-flat);
+}
+
+.drop-card.over .drop-frame rect {
+  stroke: rgba(34, 197, 94, 0.65);
+  animation: dash-march 1.1s linear infinite;
+}
+
+@keyframes dash-march {
+  to { stroke-dashoffset: -11; }
+}
+
+@keyframes dash-breathe {
+  0%, 100% { stroke: rgba(255, 255, 255, 0.11); }
+  50% { stroke: rgba(255, 255, 255, 0.15); }
+}
+
+.drop-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding-left: 196px;
+}
+
+.drop-title {
+  font: 500 13px var(--font);
+  color: #d5d7db;
+  transition: color 0.2s;
+}
+
+.drop-card.over .drop-title {
+  color: var(--green-2);
+}
+
+.drop-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.drop-tags span {
+  font: 400 11px var(--font);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #b9bdc4;
+}
+
+/* ── Uploading ──────────────────────────────────────────────────────────── */
+
+.up-card {
+  background: radial-gradient(260px 260px at 50% 140%, rgba(52, 211, 153, 0.14), transparent 70%),
+    var(--card);
+}
+
+.up-card.done {
+  background: radial-gradient(260px 260px at 50% 140%, rgba(52, 211, 153, 0.28), transparent 70%),
+    var(--card);
+}
+
+.up-row {
+  position: absolute;
+  left: 26px;
+  top: 36px;
+  width: 526px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 400 12.5px var(--font);
+  color: #a9adb5;
+}
+
+.up-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.up-name.done {
+  color: var(--green-2);
+  font-weight: 600;
+}
+
+.up-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
+.up-track {
+  position: absolute;
+  left: 26px;
+  top: 58px;
+  width: 526px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.up-fill {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1fa87a, #34d399);
+}
+
+.up-glow {
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 28px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(110, 231, 183, 0.45);
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+/* ── Integration cards (overview, left card) ────────────────────────────── */
+
+.left-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+.int-card {
+  padding: 10px 12px 0 108px;
+  display: flex;
+  flex-direction: column;
+}
+
+.int-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.int-head b {
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.int-head > span {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+}
+
+.int-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+}
+
+.int-total span {
+  font: 500 11px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.pulse {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.int-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 4px;
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.int-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.int-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+  content-visibility: auto;
+}
+
+.int-rows.tight {
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.int-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  min-width: 0;
+}
+
+.int-name {
+  font: 500 11px var(--font);
+  color: #9398a1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-row.first .int-name {
+  color: #c5c8cd;
+}
+
+.int-ago {
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+  flex: 0 0 auto;
+}
+
+.int-sub {
+  font: 400 10px var(--font);
+  color: #4d5159;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-amount {
+  font: 500 11px var(--mono);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-time {
+  font: 500 10px var(--mono);
+  color: #c9956a;
+  flex: 0 0 auto;
+}
+
+.int-more,
+.int-back {
+  border: 0;
+  background: transparent;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.int-more {
+  width: 18px;
+  height: 18px;
+}
+
+.int-back {
+  width: 28px;
+  height: 28px;
+}
+
+.int-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  padding-right: 12px;
+}
+
+.int-stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.int-stat-icon {
+  width: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.int-stat-label {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.int-stat-value {
+  margin-left: auto;
+  font: 600 12px var(--font);
+  color: #c5c8cd;
+  font-variant-numeric: tabular-nums;
+}
+
+.int-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.int-balance span {
+  font: 700 20px var(--mono);
+  color: var(--ink);
+}
+
+.int-balance i {
+  font: 600 9px var(--font);
+  font-style: normal;
+  color: var(--dim-3);
+}
+
+.int-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  min-width: 0;
+}
+
+.int-page:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+}
+
+.int-emoji {
+  width: 14px;
+  font-size: 10px;
+  color: var(--dim-3);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-style: normal;
+}
+
+.int-empty {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  padding-left: 8px;
+}
+
+.int-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--dim-3);
+  cursor: default;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.int-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.int-detail-head b {
+  font: 600 11px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.int-badge {
+  font: 500 10px var(--font);
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.int-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.int-commit {
+  font: 400 10.5px var(--font);
+  color: #c5c8cd;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.int-meta {
+  display: flex;
+  gap: 8px;
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+}
+
+.int-link {
+  border: 0;
+  background: transparent;
+  font: 400 10px var(--mono);
+  color: #7c5cffd9;
+  text-align: left;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.int-detail-text {
+  font: 400 10.5px/1.5 var(--mono);
+  color: var(--dim);
+  margin-top: 8px;
+  max-height: 88px;
+  overflow: auto;
+  content-visibility: auto;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.int-card.detail {
+  padding-top: 8px;
+}
+
+/* ── Reduced motion (OS setting only) ───────────────────────────────────────
+   Windows: Settings → Accessibility → Animation effects → off. Everything
+   collapses to near-instant; infinite decorations stop; springs snap via JS. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .shimmer,
+  .typing i,
+  .pulse,
+  .drop-frame rect,
+  .bt-btn.pending::before {
+    animation: none !important;
+  }
+
+  .view.on .stagger {
+    animation: none !important;
+  }
+
+  /* Marquee freezes: the text stays put and is clipped as before. */
+  .marquee-on .mq {
+    animation: none !important;
+  }
+
+  /* ThoughtLine: no breath and no seam blur — the crossfade alone carries it. */
+  .thought-line[data-working] .thought-line__glyph {
+    animation: none !important;
+    opacity: 0.8;
+  }
+
+  .thought-line__text {
+    filter: none !important;
+  }
+
+  /* The fuse is a countdown, not decoration: collapsed to 0.01 ms it would read
+     as "no time left at all". Hide it — the banner still leaves on schedule. */
+  .banner-fuse {
+    display: none;
+  }
+}

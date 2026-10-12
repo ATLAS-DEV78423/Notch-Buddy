@@ -1,0 +1,153 @@
+================================================================================
+NOTCH-BUDDY — SESSION HANDOFF DOCUMENT
+================================================================================
+Date of session:            Sunday, October 11, 2026 (UTC)
+Working directory:          C:\Users\Stanley\Downloads\Notch-Buddy-windows-v0.3.3
+Contributor:                Cline (AI coding agent)
+Repo state:                 Notch-Buddy-windows-v0.3.3 (Windows Tauri app = "Coucou")
+
+THIS FILE IS LOCATED AT:
+  C:\Users\Stanley\Documents\latest installer for notch buddy\session-handoff-2026-10-11.txt
+  (it sits in the same folder as the installer, so both travel together)
+
+LATEST INSTALLER (shipped, tested):
+  Coucou-Windows-0.3.4-setup.exe  (4.65 MB, NSIS GUI installer)
+  Coucou-Windows-0.3.4.msi        (5.36 MB, MSI installer)
+  Folder: C:\Users\Stanley\Documents\latest installer for notch buddy\
+
+VERSION NOTE — READ THIS FIRST:
+  * The shipped product is v0.3.4. It contains items 1-6 of section 4 below
+    (battery icon, Apple media controls, control-centre animations + Pip
+    reactions, triple-click spiral fix, agent Mochi lineup, mini-grid
+    battery alignment).
+  * v0.3.5 (the agent session view — item 7 of section 4) is FULLY CODED
+    and FULLY VALIDATED (tsc 0 errors, 14/14 JS tests, vite build OK, 10/10
+    Rust agent tests OK) but was NEVER PACKAGED: the v0.3.5 installer build
+    was stopped on your instruction. The Documents folder still holds v0.3.4.
+    To ship 0.3.5 later: run `npm run pack` in the windows/ folder and move
+    Coucou-Windows-0.3.5-setup.exe (+ .msi) into the Documents folder.
+
+================================================================================
+1. WHAT WE DID IN THIS SESSION (chronological)
+================================================================================
+1.1  You showed two reference images (Apple battery icons; macOS media
+     player). You asked for: (i) Apple now-playing media-button style,
+     (ii) Apple battery icons instead of percentage text/emoji (icon only,
+     numbers reference-only), (iii) Pip reacting to battery level (100%
+     full energy, 50% normal, <10-15% tired/exhausted), (iv) animations for
+     Do-Not-Disturb, Night Light and the Memory-boost button.
+
+1.2  Explored the codebase. Found the project in a BROKEN state:
+     `batteryWithLabel` was called in views.ts but never defined (4
+     TypeScript errors, `tsc --noEmit` failing).
+
+1.3  Implemented the battery + media + control-centre work (v0.3.4 batch).
+
+1.4  You asked for the triple-click spinning-spiral eyes (only for that
+     animation). Investigated, found and fixed two defects (section 4.4).
+
+1.5  You asked for the notch Mochis to be Hermes / VS Code / Claude Code /
+     OpenCode instead of n8n / GitHub. One clarifying question was asked;
+     you chose three permanent Mochis (Hermes, VS Code, OpenCode — the
+     VS Code pill IS your Claude Code session pill). Implemented the
+     standing-agent roster (v0.3.4 batch).
+
+1.6  Built the v0.3.4 installer (you bumped 0.3.3 -> 0.3.4 first), created
+     `Documents\latest installer for notch buddy`, moved the installer there.
+
+1.7  You asked to uninstall Coucou 0.3.3. The silent NSIS uninstaller exited
+     0 but removed nothing (twice), so the install was removed manually
+     (folder + registry key). Per-user data (settings.json, Credential
+     Manager keys, hook scripts) was intentionally left in place.
+
+1.8  You reported the two agent Mochis sit at a different height than the
+     battery (screenshot). Fixed the mini-grid alignment (v0.3.4 batch;
+     the Documents installer was rebuilt to include the fix).
+
+1.9  You asked for the agent session view (your "korus / Claude Code"
+     screenshot): inline Allow/Deny for Hermes, OpenCode and VS Code;
+     current model + thinking level; click-through step rail with
+     diff/change viewer and per-command Allow/Deny. One scoping question
+     about OpenCode approvals was asked; you chose real Allow/Deny for
+     VS Code + Hermes only, OpenCode read-only. Implemented (v0.3.5 batch —
+     coded + validated, NOT packaged, per your stop instruction).
+
+1.10 This handoff document was written on request.
+2. WHAT WAS COVERED (technical scope)
+================================================================================
+Frontend (windows/src — hand-rolled TypeScript, no framework, Canvas 2D Pip):
+  - src/ui/batteryicon.ts ..... NEW batteryWithLabel() (icon-first; the
+                                missing function that broke the build)
+  - src/views/views.ts ........ media view restructure, control-centre
+                                toggles + reactions, compact/BT battery
+                                icon-only, new agent session view,
+                                ticker removal
+  - src/views/icons.ts ........ NEW moon + sunMax glyphs
+  - src/views/ticker.ts ....... DELETED (retired, superseded by session view)
+  - src/ui/callchip.ts ........ DELETED (retired with the ticker)
+  - src/core/state.ts ......... standing agents, stepDetails, model/
+                                thinking, approval taskId, resetTask,
+                                empty integration defaults
+  - src/core/steps.ts ......... NEW pure module: step capture, kind
+                                classification, diff extraction (LCS line
+                                diff + patch parser), model/thinking parsing
+  - src/core/agents.ts ........ unchanged (Hermes/OpenCode catalog in use)
+  - src/island/hooks.ts ....... rich steps, model/thinking capture,
+                                approval task tag, standing-aware Stop/
+                                SessionEnd, stepDetails clearing
+  - src/island/integrations.ts  stepDetails clearing on event steps
+  - src/island/island.ts ...... mini-grid row/grid layout + geometry,
+                                Ticker removed from the busy gate
+  - src/style.css ............. media transport restyle, toggle animations,
+                                mini-grid row variant, session view styles,
+                                reduced-motion gates everywhere
+  - scripts/test-controls.mjs . 4 tests -> 14 tests (see section 5)
+
+Backend (windows/src-tauri, Rust):
+  - src/settings.rs ........... default active_integrations emptied +
+                                one-time migration clearing the old shipped
+                                default list
+  - src/agents.rs ............. OpenCode plugin forwards model/thinking
+                                (modelInfo helper) + new Rust unit test
+
+Docs/meta:
+  - CHANGELOG.md .............. new 0.3.4 and 0.3.5 sections
+  - README.md, windows/README.md, NOTICE.md, docs/legal.html (fr+en):
+    React Bits credit corrected (six -> five ports: CallChip removed)
+  - Versions 0.3.3 -> 0.3.4 -> 0.3.5 in package.json, package-lock.json,
+    Cargo.toml (workspace), tauri.conf.json (hook crate inherits workspace)
+
+NOT covered / explicitly out of scope:
+  - macOS Swift app, Linux build, iPhone app, relay worker: untouched.
+  - Favourite (star) button and AirPlay/output-picker from the media
+    screenshot: no backend exists for either, so they were not added
+    (the speaker/mute button WAS added, since mute exists).
+  - Real Allow/Deny for OpenCode: impossible without faking a decision
+    (its plugin API is fire-and-forget). Display-only by design.
+  - Model/thinking values are never invented: the row hides when the agent
+    reports nothing (Claude Code's hooks carry no model today).
+
+================================================================================
+3. FEATURES THAT ALREADY EXISTED (verified, not written by us)
+================================================================================
+  * Apple-style battery glyph with tiers (white healthy/full, yellow low +
+    Battery-Saver, red critical with breathing, green charging with bolt,
+    tier-crossing pulse) — windows/src/ui/batteryicon.ts + style.css.
+  * Pip's battery energy states (src/mochi/power.ts): 100% = flex (full
+    energy, bicep-flex + sparkle), charging = perky, <=15% = drained
+    (tired), <=10% = exhausted (sighing, red aura), mid-range = normal.
+  * Reaction catalog entries dnd-sleep, dnd-wake, night-light-on/off,
+    memory-freeing/freed (mochi/reactions.ts) — pre-existing; we WIRED them
+    to the control-centre buttons.
+  * Spiral-eye drawing + dizzy state (mochi/engine.ts) and the triple-click
+    slap chain (island.ts -> engine.onDizzy -> handleDizzy -> confused view).
+  * Hermes real approvals (pre_tool_call blocks, allowsApproval true) and
+    Claude Code real approvals (hook relay decisions).
+  * OpenCode session.diff -> per-file PostToolUse with { file_path, diff }.
+  * Mini Mochi engine (mochi/minibots.ts), VS Code pill
+    (integration_claude), Settings -> Active pills toggles (max 4).
+
+================================================================================
+
+
+================================================================================

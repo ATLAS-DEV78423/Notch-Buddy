@@ -1,0 +1,391 @@
+# Notch-Buddy — third-party agent integration
+
+Any tool that can write to a Unix domain socket (macOS, Linux) or a named pipe (Windows) can send events to Notch-Buddy and have its own pill next to Claude Code.
+
+## The `coucou_agent` field
+
+Add the optional field `coucou_agent` to any hook JSON payload. Notch-Buddy will create a pill labelled with the agent name and route all events to it.
+
+**Validation:** the name must match `^[a-z0-9-]{1,24}$` (lowercase letters, digits and hyphens, 1–24 characters). An absent or invalid name routes the event to the Claude Code pill instead.
+
+## Hook command (macOS)
+
+Configure your tool to call the Notch-Buddy relay with `--agent <your-name>` after the hook executable:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "type": "command", "command": "/path/to/nb-hook --agent my-tool" }
+    ]
+  }
+}
+```
+
+The shell wrapper passes `"$@"` to the Python relay, which extracts the agent name and injects it into the payload before forwarding to Notch-Buddy.
+
+## Hook command (Windows)
+
+Same pattern with the Windows relay:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "type": "command", "command": "C:\\path\\to\\coucou-hook.exe --agent my-tool" }
+    ]
+  }
+}
+```
+
+## Hook command (Linux)
+
+Same pattern with the Linux relay. Notch-Buddy copies the relay to `~/.local/share/coucou/bin/coucou-hook` at startup.
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "type": "command", "command": "/path/to/coucou-hook --agent my-tool" }
+    ]
+  }
+}
+```
+
+## Payload format
+
+The relay adds `coucou_agent` to the JSON it forwards. You can also add it yourself if you talk to the socket directly:
+
+```json
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "my-session-1",
+  "coucou_agent": "my-tool",
+  "prompt": "Running task…"
+}
+```
+
+Send newline-terminated JSON to the socket:
+- **macOS (GitHub build):** `~/Library/Application Support/NotchBuddy/nb.sock`
+- **macOS (App Store build):** `~/Library/Containers/fr.louisraille.Coucou/Data/nb.sock`
+- **Windows:** `\\.\pipe\coucou-<user-SID>`
+- **Linux:** `$XDG_RUNTIME_DIR/coucou.sock` (usually `/run/user/<uid>/coucou.sock`). Only your own user account can connect.
+
+## Supported events
+
+All standard Claude Code hook events are supported. `PermissionRequest` is supported for
+Claude Code, Codex, Copilot CLI, Muse Code and Hermes. For every other third-party agent an
+approval card is not offered — the relay answers with no decision and the agent re-asks in
+its terminal.
+
+The pill lifecycle:
+
+| Event | Effect |
+|---|---|
+| `SessionStart` | Creates the pill (if absent), sets state to idle |
+| `UserPromptSubmit` | State → thinking; prompt shown in ticker |
+| `PreToolUse` | State → working; tool label shown in ticker |
+| `PostToolUse` / `PostToolUseFailure` | State → working |
+| `Notification` | Rate-limit or question state if applicable |
+| `Stop` | State → finished for 5 s; active declared pills (catalog + checked in Settings) reset to idle — all others are removed |
+| `StopFailure` | State → error |
+| `SessionEnd` | Active declared pills (catalog + checked in Settings) reset to idle — all others are removed |
+| `SubagentStart` / `SubagentStop` | Step added to ticker |
+
+## Declared pills
+
+A **declared pill** is a catalog entry (`PillCatalog.swift`) that has been enabled in **Settings → Active pills**. When a session ends for a declared pill, the pill stays visible and resets to idle instead of disappearing.
+
+A catalog pill that is not checked in Settings behaves like any other agent: it gets an automatic pill when a session starts, and that pill is removed when the session ends.
+
+The GitHub build exposes Gemini CLI (`agent_gemini`), Antigravity (`agent_antigravity`),
+GitHub Copilot CLI (`agent_copilot`), Muse Code (`agent_muse`), OpenCode (`agent_opencode`),
+Hermes (`agent_hermes`) and Amp (`agent_amp`) in Settings → Active pills. Cursor
+(`agent_cursor`) and Codex (`agent_codex`, GitHub build only) are there too — their pills
+can be declared and set as the main pill; session support is coming in a future version.
+
+## Real-world examples
+
+### Gemini CLI (macOS)
+
+Notch-Buddy supports Gemini CLI out of the box via **Settings → Gemini CLI → Install hooks**.
+The installer writes to `~/.gemini/settings.json` and uses `--agent gemini` so
+Gemini sessions get their own pill. The relay translates Gemini event names to canonical
+Notch-Buddy events automatically.
+
+| Gemini CLI event | Canonical event |
+|---|---|
+| `BeforeTool` | `PreToolUse` |
+| `AfterTool` | `PostToolUse` |
+| `BeforeAgent` | `UserPromptSubmit` |
+| `AfterAgent` | `Stop` |
+
+`AfterModel` is not installed — it fires on every response chunk and would flood the island.
+
+### Antigravity — `agy` (macOS)
+
+Notch-Buddy supports Antigravity out of the box via **Settings → Antigravity → Install hooks**.
+The installer writes to `~/.gemini/config/hooks.json` (timeouts in seconds) and uses
+`--agent antigravity`. The relay translates `toolCall.name` / `conversationId` to the
+island's `tool_name` / `session_id`.
+
+| Antigravity event | Canonical event |
+|---|---|
+| `PreInvocation` | `UserPromptSubmit` |
+| `PreToolUse` | `PreToolUse` |
+| `PostToolUse` | `PostToolUse` |
+| `PostInvocation` | `PostToolUse` |
+| `Stop` | `Stop` |
+
+### GitHub Copilot CLI (macOS)
+
+Notch-Buddy supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.
+The installer writes to `~/.copilot/hooks/coucou.json` and uses `--agent copilot`.
+Copilot CLI uses camelCase event names and `{"bash":"…","timeoutSec":N}` entries.
+Copilot CLI is fail-closed on `permissionRequest`: the relay always outputs valid JSON
+and returns `{"permissionDecision":"ask"}` on timeout so Copilot re-prompts in the terminal.
+Notch-Buddy shows a real Allow / Deny card for Copilot approval requests.
+
+| Copilot CLI event | Canonical event |
+|---|---|
+| `sessionStart` | `SessionStart` |
+| `userPromptSubmitted` | `UserPromptSubmit` |
+| `preToolUse` | `PreToolUse` |
+| `permissionRequest` | `PermissionRequest` |
+| `postToolUse` | `PostToolUse` |
+| `agentStop` | `Stop` |
+| `sessionEnd` | `SessionEnd` |
+| `notification` | `Notification` |
+
+### Muse Code (macOS)
+
+Notch-Buddy supports Muse Code out of the box via **Settings → Muse Code Hooks → Install hooks**.
+The installer merges into `~/.config/muse/settings.json` and uses `--agent muse`.
+Muse uses PascalCase event names. Notch-Buddy shows a real Allow / Deny card for Muse approval requests.
+
+| Muse Code event | Canonical event |
+|---|---|
+| `SessionStart` | `SessionStart` |
+| `UserPromptSubmit` | `UserPromptSubmit` |
+| `PreToolUse` | `PreToolUse` |
+| `PermissionRequest` | `PermissionRequest` |
+| `PostToolUse` | `PostToolUse` |
+| `Stop` | `Stop` |
+| `SessionEnd` | `SessionEnd` |
+
+### Amp (macOS)
+
+Notch-Buddy supports Amp via **Settings → Amp Plugin → Install plugin**.
+The installer writes a TypeScript plugin to `~/.config/amp/plugins/coucou.ts`.
+The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; all events are forwarded display-only.
+
+| Amp event | Canonical event |
+|---|---|
+| `session.start` | `SessionStart` |
+| `agent.start` | `UserPromptSubmit` |
+| `tool.call` | `PreToolUse` |
+| `tool.result` | `PostToolUse` |
+| `agent.end` | `Stop` |
+
+### Any other tool
+
+Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS),
+`coucou-hook.exe --agent <your-name> <EventName>` (Windows)
+or `~/.local/share/coucou/bin/coucou-hook --agent <your-name> <EventName>` (Linux)
+and let the relay forward the event.
+
+## Quick test (Linux)
+
+With Notch-Buddy running:
+
+```sh
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
+  | ~/.local/share/coucou/bin/coucou-hook --agent demo
+```
+
+A "demo" pill should appear in the island.
+
+## Quick test (macOS)
+
+With Notch-Buddy running:
+
+```sh
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
+  | /bin/sh ~/Library/Application\ Support/NotchBuddy/nb-hook --agent demo
+```
+
+A "demo" pill should appear in the island.
+
+## Hermes Agent (macOS, Windows, Linux)
+
+Hermes runs shell hooks declared under a top-level `hooks:` key (sibling of `model:`) in its
+config file. Notch-Buddy points those entries straight at its relay — no wrapper script.
+Hermes sessions surface as the `agent_hermes` pill.
+
+### Where the config lives
+
+The config lives in the Hermes home: `$HERMES_HOME` if set, otherwise `%LOCALAPPDATA%\hermes`
+on Windows and `~/.hermes` on macOS and Linux. Run `hermes config path` to print it. On Windows
+that is `C:\Users\<you>\AppData\Local\hermes\config.yaml` — **not** `~/.hermes/config.yaml`,
+which is the POSIX default and does not exist on a Windows install. Writing the Windows hooks
+to `~/.hermes` is silent: the installer reports success and Hermes never loads them.
+
+> **A trap.** `hermes hooks list` prints a hardcoded message naming `~/.hermes/config.yaml` even
+> on Windows, where it actually read `%LOCALAPPDATA%\hermes\config.yaml` (`hermes_cli/hooks.py`).
+> That string is a literal in the "nothing configured" branch, so it appears regardless of
+> platform. `hermes config path` is authoritative; that message is not.
+
+```yaml
+hooks:
+  pre_llm_call:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_llm_call'
+      timeout: 10
+  pre_tool_call:
+    - matcher: "terminal|write_file|patch"
+      command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes pre_tool_call'
+      timeout: 130
+  post_tool_call:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes post_tool_call'
+      timeout: 10
+  on_session_start:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes on_session_start'
+      timeout: 10
+  on_session_end:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes on_session_end'
+      timeout: 10
+  subagent_start:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes subagent_start'
+      timeout: 10
+  subagent_stop:
+    - command: '"C:/Users/you/AppData/Local/coucou/bin/coucou-hook.exe" --agent hermes subagent_stop'
+      timeout: 10
+```
+
+Note the single-quoted YAML scalars: the command contains double quotes, so a
+double-quoted scalar would need escaping that is easy to get wrong.
+
+macOS uses `/bin/sh "<Application Support>/NotchBuddy/nb-hook" --agent hermes <event>` instead.
+
+**Hermes reads a JSON receipt on stdout.** Notch-Buddy answers with the exact same bytes on
+macOS and Windows — the two relays assert the identical string so they cannot drift:
+
+| Decision | Receipt |
+|---|---|
+| Allow | `{}` |
+| Deny | `{"action":"block","message":"Denied from Coucou"}` |
+| Notch-Buddy open, no answer within 110 s | `{"action":"block","message":"Coucou: no answer — re-run to be asked again."}` |
+| Notch-Buddy not running | *nothing printed* — Hermes proceeds |
+
+That last row is why Notch-Buddy does **not** set `fail_closed: true`: fail-open is what keeps the
+promise that a closed Notch-Buddy never blocks your agent. The timeout row is why a timeout denies
+instead of silently allowing.
+
+**Consent.** Hermes will not run a shell hook until you approve that exact `(event, command)`
+pair, recorded in `<home>/shell-hooks-allowlist.json` (beside the config). Until then the hook is
+silently skipped — `hermes hooks list` shows `✗ not allowlisted`.
+
+Registration only happens at **session startup**. Hermes's own `register_from_config`
+(`agent/shell_hooks.py`) is what writes the allowlist, and only a session-starting command calls
+it. `hermes hooks list`, `test` and `doctor` never register, so running *those* under
+`HERMES_ACCEPT_HOOKS=1` does nothing. To approve non-interactively, make a session start with the
+env var set:
+
+```bash
+export HERMES_ACCEPT_HOOKS=1
+hermes chat        # or any session-starting command — the startup path registers the hooks
+```
+
+`HERMES_ACCEPT_HOOKS=1`, the `--accept-hooks` flag and `hooks_auto_accept: true` in the config are
+all honoured — they just need a session-starting command to take effect. Verified by invoking
+Hermes's own registration function under `HERMES_ACCEPT_HOOKS=1`: the allowlist was written and
+`hermes hooks doctor` then reported all seven healthy. A full interactive session writing it was
+**not** observed, and the plan's earlier suggestion `hermes --accept-hooks chat --help` approves
+nothing — `--help` exits before startup.
+
+Changing the relay path changes the command string and therefore re-prompts. `hermes hooks doctor`
+reports drift.
+
+**The seven events Notch-Buddy installs.** Verified against a real Hermes v0.21.5 install —
+`hermes hooks list` shows all seven and `hermes hooks doctor` reports them healthy:
+
+| Hermes event | Canonical event | Timeout |
+|---|---|---|
+| `pre_llm_call` | `UserPromptSubmit` | 10 s |
+| `pre_tool_call` | `PermissionRequest` | 130 s, `matcher: terminal\|write_file\|patch` |
+| `post_tool_call` | `PostToolUse` | 10 s |
+| `on_session_start` | `SessionStart` | 10 s |
+| `on_session_end` | `SessionEnd` | 10 s |
+| `subagent_start` | `SubagentStart` | 10 s |
+| `subagent_stop` | `SubagentStop` | 10 s |
+
+`pre_llm_call` puts the prompt in the ticker and sets `thinking`; `post_tool_call` is display-only
+and sets `working`; the session and subagent events create, label and clear the pill.
+
+**Only `pre_tool_call` can block a tool** (`shell_hooks.py: _BLOCKING_EVENTS`). That is why it
+alone carries the `matcher` and the long timeout: it is the gate. `pre_tool_call` maps to
+`PermissionRequest` and **not** `PreToolUse` because Hermes has no permission event of its own —
+for the tools the `matcher` selects, `pre_tool_call` *is* the permission gate. Mapping it to
+`PreToolUse` would leave the relay's `waits_for_answer` false, the relay would return immediately,
+and Allow/Deny from the island would never reach Hermes.
+
+**Limits.** Hermes caps hook `timeout` at 300 s (larger values are silently truncated). The
+`matcher` is what keeps this usable: without it, `pre_tool_call` fires for every tool and you
+would approve every read.
+
+**What is verified, and what is not.** Verified on Windows against Hermes v0.21.5: `hermes hooks
+list` shows all seven; `hermes hooks doctor` reports all seven healthy; with Notch-Buddy closed a
+hook exits 0 with an empty receipt in under 0.2 s (fail-open); and the relay emits the correct
+Hermes receipts — allow `{}`, deny `{"action":"block","message":"Denied from Coucou"}`, no-answer
+block — proven headlessly. **Not tested:** clicking Allow/Deny in the island against a real Hermes
+session, the ~115 s timeout firing, and the pill/ticker in a live session. **macOS is untested end
+to end** — the Swift relay has not been compiled or run.
+
+## OpenCode (macOS, Windows, Linux)
+
+Notch-Buddy installs one generated plugin at `~/.config/opencode/plugins/coucou.js` — the same
+XDG path on every platform, which is why OpenCode works on Windows unlike Amp.
+
+The plugin forwards display events fire-and-forget: it spawns the Notch-Buddy relay, writes one
+JSON line, and returns without waiting. OpenCode is never slowed down.
+
+**OpenCode permissions are display-only.** OpenCode exposes `permission.asked` as an
+*observable event*, not as a hook that can return a decision, so Notch-Buddy cannot answer it.
+The permission is surfaced as a question in the ticker — answer it in OpenCode's terminal.
+
+| OpenCode event | Canonical event |
+|---|---|
+| `session.created` | `SessionStart` |
+| `session.idle` | `Stop` |
+| `session.error` | `StopFailure` |
+| `session.deleted` | `SessionEnd` |
+| `session.diff` | `PostToolUse` (carries the diff) |
+| `permission.asked` | `Notification` (`Allow <tool>?`) |
+| `tool.execute.before` | `PreToolUse` |
+| `tool.execute.after` | `PostToolUse` |
+
+**What is verified, and what is not.** Verified headlessly on Windows: the generated plugin loads
+under Node, spawns the relay directly (no `/bin/sh`), and forwards the right payload for every
+event above — `session.diff` fans out one `PostToolUse` per changed file, `permission.asked` maps
+to `Notification` with an `Allow <tool>?` message, and every payload carries
+`coucou_agent: 'opencode'`. **Not tested:** a live OpenCode session — the pill, the ticker and the
+diffs have not been seen against a real running OpenCode, and neither has the app's own
+install/uninstall round-trip. macOS is untested end to end.
+
+## Platform support matrix
+
+| Agent | macOS | Windows | Linux | Approvals | Why not, where not |
+|---|---|---|---|---|---|
+| Claude Code | ✅ | ✅ | ✅ | ✅ | — |
+| Gemini CLI | ✅ | ❌ | ❌ | ✅ | mac-only hook installer |
+| Antigravity | ✅ | ❌ | ❌ | ✅ | mac-only hook installer |
+| Codex | ✅ | ✅ | ✅ | ✅ | — |
+| Copilot CLI | ✅ | ✅ | ✅ | ✅ | — |
+| Muse Code | ✅ | ✅ | ✅ | ✅ | — |
+| **OpenCode** | ✅ | ✅ | ✅ | ❌ | plugin API cannot return a decision |
+| **Hermes** | ✅ | ✅ | ✅ | ✅ | — |
+| Amp | ✅ | ❌ | ❌ | ❌ | mac-only plugin path |
+
+**On "macOS ✅" for Hermes and OpenCode:** the macOS code paths exist, but the Swift relay has
+not been compiled or run on this branch — no Swift toolchain was available when the work was
+done. The Windows paths are the ones that were exercised. Treat the macOS column as *implemented,
+untested* until Tasks 3-5 are repeated on a Mac.
