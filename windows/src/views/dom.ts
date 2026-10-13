@@ -1,7 +1,19 @@
 // Minimal DOM helpers — no framework, as specified.
 
-type Attrs = Record<string, string | number | boolean | EventListener | undefined>;
+type Attrs = Record<string, unknown>;
 type Child = Node | string | null | undefined | false;
+
+function safeText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? "" : json;
+  } catch {
+    return "";
+  }
+}
 
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -11,13 +23,13 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue;
-    if (k === "class") el.className = String(v);
-    else if (k === "text") el.textContent = String(v);
-    else if (k === "html") el.innerHTML = String(v);
+    if (k === "class") el.className = safeText(v);
+    else if (k === "text") el.textContent = safeText(v);
+    else if (k === "html") el.innerHTML = safeText(v);
     else if (k.startsWith("on") && typeof v === "function") {
       el.addEventListener(k.slice(2).toLowerCase(), v as EventListener);
-    } else if (k === "style") el.setAttribute("style", String(v));
-    else el.setAttribute(k, v === true ? "" : String(v));
+    } else if (k === "style") el.setAttribute("style", safeText(v));
+    else el.setAttribute(k, v === true ? "" : safeText(v));
   }
   for (const c of children) {
     if (c == null || c === false) continue;

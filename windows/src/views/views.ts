@@ -119,12 +119,12 @@ function viewLabel(view: IslandViewName): string {
 // ── Header ────────────────────────────────────────────────────────────────────
 
 export function buildHeader(actions: ViewActions): ViewHost {
-  const tabHome = h("button", { class: "tab", title: "Overview", onclick: () => go("overview") }, svg(ICONS.house, 13));
-  const tabChat = h("button", { class: "tab", title: "Ask", onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
-  const tabDrop = h("button", { class: "tab", title: "Drop", onclick: () => go("upload") }, svg(ICONS.plus, 13));
+  const tabHome = h("button", { class: "tab", "aria-label": "Overview", title: "Overview", onclick: () => go("overview") }, svg(ICONS.house, 13));
+  const tabChat = h("button", { class: "tab", "aria-label": "Ask", title: "Ask", onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
+  const tabDrop = h("button", { class: "tab", "aria-label": "Drop", title: "Drop", onclick: () => go("upload") }, svg(ICONS.plus, 13));
 
-  const gearBtn = h("button", { title: "Settings", onclick: () => go("settings") }, svg(ICONS.gear, 14));
-  const soundBtn = h("button", { title: "Mute", onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
+  const gearBtn = h("button", { "aria-label": "Settings", title: "Settings", onclick: () => go("settings") }, svg(ICONS.gear, 14));
+  const soundBtn = h("button", { "aria-label": "Mute", title: "Mute", onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
 
   function go(v: IslandViewName) {
     actions.blip();
@@ -426,7 +426,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
     "button",
-    { class: "icon-btn jump", title: "Open", onclick: () => actions.openTarget() },
+    { class: "icon-btn jump", "aria-label": "Open", title: "Open", onclick: () => actions.openTarget() },
     svg(ICONS.arrowUpRight, 8),
   );
   const left = card(null, leftBody, jump);
@@ -510,6 +510,16 @@ function buildOverview(actions: ViewActions): ViewHost {
 
       jump.style.display = detailOpen ? "none" : "";
 
+      // A live session is the whole point of the view: collapse the pills card
+      // so it gets the full island width. Idle/finished → pills come back on
+      // the next sync (no manual toggle anywhere).
+      const live =
+        mode === "session" &&
+        task != null &&
+        task.state !== "idle" &&
+        task.state !== "finished";
+      el.classList.toggle("solo", live);
+
       const others = State.otherTasks.slice(0, 4);
       const pillKey = others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
@@ -526,8 +536,8 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
   const label = task.id === "integration_claude" ? "VS Code" : task.name;
   const canvas = createMiniBot(task, 24);
   const pill = h(
-    "div",
-    { class: "pill", onclick: () => actions.setFocus(task.id) },
+    "button",
+    { class: "pill", type: "button", "aria-label": label, onclick: () => actions.setFocus(task.id) },
     canvas,
     h("span", { class: "lbl", text: label }),
   );
@@ -781,7 +791,7 @@ function buildPlaceholder(title: string, sub: string): ViewHost {
 // ── New view stubs (filled in by later tasks) ────────────────────────────────
 
 function buildDashboardView(): ViewHost {
-  const mediaWidget = h("div", { class: "widget stagger", style: "--i:0", onclick: () => State.setView("media") },
+  const mediaWidget = h("button", { class: "widget stagger", type: "button", style: "--i:0", onclick: () => State.setView("media") },
     h("div", { class: "widget-title" }, "Media"));
   const mediaBody = h("div", { class: "widget-media" });
   const mediaEmpty = h("div", { class: "widget-empty" }, "No media playing");
@@ -790,23 +800,23 @@ function buildDashboardView(): ViewHost {
   const mediaText = h("div");
   mediaBody.append(art, mediaText);
 
-  const statsWidget = h("div", { class: "widget stagger", style: "--i:1", onclick: () => State.setView("stats") },
+  const statsWidget = h("button", { class: "widget stagger", type: "button", style: "--i:1", onclick: () => State.setView("stats") },
     h("div", { class: "widget-title" }, "Stats"));
   const statsValue = h("div", { class: "widget-value" });
   statsWidget.append(statsValue);
 
-  const timerWidget = h("div", { class: "widget stagger", style: "--i:2", onclick: () => State.setView(State.timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
+  const timerWidget = h("button", { class: "widget stagger", type: "button", style: "--i:2", onclick: () => State.setView(State.timer.mode === "stopwatch" ? "stopwatch" : "pomodoro") },
     h("div", { class: "widget-title" }, "Timer"));
   const timerValue = h("div", { class: "widget-value" });
   timerWidget.append(timerValue);
 
-  const weatherWidget = h("div", { class: "widget stagger", style: "--i:3", onclick: () => State.setView("weather") },
+  const weatherWidget = h("button", { class: "widget stagger", type: "button", style: "--i:3", onclick: () => State.setView("weather") },
     h("div", { class: "widget-title" }, "Weather"));
   const weatherValue = h("div", { class: "widget-value" });
   const weatherEmpty = h("div", { class: "widget-empty" });
   weatherWidget.append(weatherValue, weatherEmpty);
 
-  const batteryWidget = h("div", { class: "widget stagger", style: "--i:4", onclick: () => State.setView("controlCenter") },
+  const batteryWidget = h("button", { class: "widget stagger", type: "button", style: "--i:4", onclick: () => State.setView("controlCenter") },
     h("div", { class: "widget-title" }, "Battery"));
   // The widget sits on the number in place of the old "NN%" text: the glyph
   // reads at a glance, the tier colour carries the warning.
@@ -814,7 +824,7 @@ function buildDashboardView(): ViewHost {
   const batteryValue = h("div", { class: "widget-value widget-battery" }, batteryIcon.el);
   batteryWidget.append(batteryValue);
 
-  const btWidget = h("div", { class: "widget stagger", style: "--i:5", onclick: () => State.setView("bluetooth") },
+  const btWidget = h("button", { class: "widget stagger", type: "button", style: "--i:5", onclick: () => State.setView("bluetooth") },
     h("div", { class: "widget-title" }, "Bluetooth"));
   const btValue = h("div", { class: "widget-value" });
   const btEmpty = h("div", { class: "widget-empty" }, "No devices");
@@ -878,16 +888,17 @@ function buildMediaView(): ViewHost {
   // Each button is a real <button> so hover, :active and keyboard focus are
   // free; the icon is swapped in place (never rebuilt) so the press spring is
   // not interrupted mid-gesture.
-  const prevBtn = h("button", { class: "mc-btn", title: "Previous", onclick: () => void Bridge.mediaPrev() },
+  const prevBtn = h("button", { class: "mc-btn", "aria-label": "Previous", title: "Previous", onclick: () => void Bridge.mediaPrev() },
     svg(ICONS.mediaPrev, 20));
-  const playBtn = h("button", { class: "mc-btn mc-play", title: "Play", onclick: () => void Bridge.mediaPlayPause() },
+  const playBtn = h("button", { class: "mc-btn mc-play", "aria-label": "Play", title: "Play", onclick: () => void Bridge.mediaPlayPause() },
     svg(ICONS.mediaPlay, 27));
-  const nextBtn = h("button", { class: "mc-btn", title: "Next", onclick: () => void Bridge.mediaNext() },
+  const nextBtn = h("button", { class: "mc-btn", "aria-label": "Next", title: "Next", onclick: () => void Bridge.mediaNext() },
     svg(ICONS.mediaNext, 20));
 
   let lastMuted: boolean | null = null;
   const volBtn = h("button", {
     class: "mc-vol",
+    "aria-label": "Mute",
     title: "Mute",
     onclick: () => {
       react("mute-flash");
@@ -962,12 +973,14 @@ function buildMediaView(): ViewHost {
         lastPlaying = m.playing;
         playBtn.replaceChildren(svg(m.playing ? ICONS.mediaPause : ICONS.mediaPlay, 27));
         playBtn.title = m.playing ? "Pause" : "Play";
+        playBtn.setAttribute("aria-label", m.playing ? "Pause" : "Play");
         playBtn.classList.toggle("playing", m.playing);
       }
       if (State.volume.muted !== lastMuted) {
         lastMuted = State.volume.muted;
         volBtn.replaceChildren(svg(lastMuted ? ICONS.speakerOff : ICONS.mediaVolume, 15));
         volBtn.title = lastMuted ? "Unmute" : "Mute";
+        volBtn.setAttribute("aria-label", lastMuted ? "Unmute" : "Mute");
       }
     },
   };
@@ -1082,6 +1095,7 @@ function buildControlCenter(): ViewHost {
     "button",
     {
       class: "cc-icon-btn",
+      "aria-label": "Mute",
       title: "Mute",
       onclick: () => {
         react("mute-flash");
@@ -1270,7 +1284,7 @@ function buildBluetoothView(): ViewHost {
         "div",
         { class: "bt-head" },
         count,
-        h("button", { class: "bt-refresh", text: "Refresh", onclick: () => void seedBluetooth() }),
+        h("button", { class: "bt-refresh", type: "button", text: "Refresh", onclick: () => void seedBluetooth() }),
       ),
       error,
       empty,

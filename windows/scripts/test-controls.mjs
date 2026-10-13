@@ -4,8 +4,13 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const domSource = readFileSync(resolve(root, "src/views/dom.ts"), "utf8");
+const viewsSource = readFileSync(resolve(root, "src/views/views.ts"), "utf8");
+const chatSource = readFileSync(resolve(root, "src/views/chat.ts"), "utf8");
+const integrationsSource = readFileSync(resolve(root, "src/views/integrations.ts"), "utf8");
 const result = await build({
   stdin: { contents: `
     export { State } from "./src/core/state";
@@ -283,4 +288,31 @@ test("the notch lineup is VS Code, Hermes and OpenCode — not the integration M
   // Re-seeding is idempotent.
   State.loadIntegrationTasks();
   assert.equal(State.tasks.filter((t) => t.id === "agent_hermes").length, 1);
+});
+
+test("dashboard widgets and agent pills are semantic keyboard controls", () => {
+  assert.match(viewsSource, /const mediaWidget = h\("button"/);
+  assert.match(viewsSource, /const statsWidget = h\("button"/);
+  assert.match(viewsSource, /const timerWidget = h\("button"/);
+  assert.match(viewsSource, /const pill = h\(\s*"button"/s);
+  assert.doesNotMatch(viewsSource, /class: "widget"[^}]*onclick/s);
+  assert.doesNotMatch(viewsSource, /class: "pill", onclick/);
+});
+
+test("icon-only and chat actions expose accessible names", () => {
+  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Overview"/s);
+  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Ask"/s);
+  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Drop"/s);
+  assert.match(viewsSource, /class: "icon-btn jump",\s*"aria-label": "Open"/s);
+  assert.match(viewsSource, /class: "mc-btn",\s*"aria-label": "Previous"/s);
+  assert.match(viewsSource, /class: "mc-btn mc-play",\s*"aria-label": "Play"/s);
+  assert.match(viewsSource, /class: "mc-btn",\s*"aria-label": "Next"/s);
+  assert.match(chatSource, /class: "send-btn"[^}]*"aria-label": "Send"/s);
+  assert.match(integrationsSource, /class: "int-more",\s*"aria-label": "Details"/s);
+});
+
+test("DOM text and attributes never fall back to object coercion", () => {
+  assert.match(domSource, /function safeText\(value: unknown\)/);
+  assert.match(domSource, /JSON\.stringify\(value\)/);
+  assert.match(domSource, /textContent = safeText\(v\)/);
 });

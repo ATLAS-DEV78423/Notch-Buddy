@@ -128,7 +128,7 @@ function vercelCard(onDetail: () => void): HTMLElement {
     if (i === 0) {
       const more = h(
         "button",
-        { class: "int-more", title: "Details", onclick: onDetail },
+        { class: "int-more", "aria-label": "Details", title: "Details", onclick: onDetail },
         svg(ICONS.ellipsis, 8),
       );
       rows.append(listRow(accent, true, i, name, ago, more));
@@ -165,7 +165,7 @@ function vercelDetail(onBack: () => void): HTMLElement {
     h(
       "div",
       { class: "int-detail-head" },
-      h("button", { class: "int-back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
+      h("button", { class: "int-back", "aria-label": "Back", title: "Back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
       dot(accent, 6),
       h("b", { text: String(d.projectName ?? "Deployment") }),
       h("span", { class: "int-badge", style: `color:${accent};background:${accent}24`, text: status }),
@@ -354,7 +354,7 @@ function n8nDetail(task: AgentTask, onBack: () => void): HTMLElement {
     h(
       "div",
       { class: "int-detail-head" },
-      h("button", { class: "int-back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
+      h("button", { class: "int-back", "aria-label": "Back", title: "Back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
       dot(accent, 6),
       h("b", { text: task.steps[0] ?? "Workflow" }),
       h("span", {
