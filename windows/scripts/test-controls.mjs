@@ -120,14 +120,20 @@ test("reduced motion freezes DND breathing", () => {
   setPrefersReduced(false);
 });
 test("triple click spins spiral eyes for the whole dizzy hold, and only there", () => {
-  const { engine, stop } = setup();
-  // The engine's tweens and busy deadline ride performance.now(), so drive the
-  // hold on a fake 60 fps clock instead of waiting real seconds out.
+  // The engine's tweens and busy deadline ride performance.now(), and its blink
+  // schedule rides Math.random (engine.ts nextBlink = now + 1.5 + rand*2,
+  // re-armed at +2.2 + rand*3.2): freeze both so the hold is a pure fake clock.
+  // A random blink tween landing in the recovery window keeps engine.busy true
+  // legitimately and flakes the final assertion.
   const realNow = performance.now;
+  const realRandom = Math.random;
   let clock = realNow.call(performance);
   performance.now = () => clock;
-  const frame = () => { clock += 1000 / 60; engine.update(1 / 60); };
+  Math.random = () => 0.5; // nextBlink crosses at t+2.5s; its 200ms tween ends at 2.7s, re-arm lands at 6.3s
+  let engine, stop;
   try {
+    ({ engine, stop } = setup());
+    const frame = () => { clock += 1000 / 60; engine.update(1 / 60); };
     // Mirror island.handleDizzy: the engine fires onDizzy on the third slap and
     // the island pins the dizzy state for 3.3 s.
     let dizzyFired = 0;
@@ -152,13 +158,17 @@ test("triple click spins spiral eyes for the whole dizzy hold, and only there", 
     State.stateOverride = null;
     engine.setState("idle");
     for (let i = 0; i < 200; i++) frame();
-    assert.equal(engine.busy, false);
+    assert.equal(engine.busy, false,
+      `busy terms — tweens: [${[...engine.tweens.keys()]}], particles: ${engine.particles.length}, ` +
+      `reactionUntil-clock: ${Math.round(engine.reactionUntil - clock)}ms, pose: ${engine.poseName}, ` +
+      `aura: ${engine.auraColor}, state: ${engine.state}`);
     assert.equal(engine.eyeOverride, null);
   } finally {
     performance.now = realNow;
+    Math.random = realRandom;
     State.stateOverride = null;
-    engine.onDizzy = null;
-    stop();
+    if (engine) engine.onDizzy = null;
+    if (stop) stop();
   }
 });
 test("step capture classifies tools and keeps their arguments for the viewer", () => {
