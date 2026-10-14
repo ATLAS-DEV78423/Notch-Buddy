@@ -3,7 +3,7 @@
 type Attrs = Record<string, unknown>;
 type Child = Node | string | null | undefined | false;
 
-function safeText(value: unknown): string {
+export function safeText(value: unknown): string {
   if (typeof value === "string") return value;
   if (value == null) return "";
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);

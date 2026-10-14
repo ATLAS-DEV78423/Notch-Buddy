@@ -283,7 +283,10 @@ function handleHook(island: Island, payload: HookPayload) {
       // touches CLAUDE_ID, so a Hermes request would have updated the wrong pill.
       ensurePill();
       if (pendingTimeout != null) window.clearTimeout(pendingTimeout);
-      const tool = payload.tool_name ?? "Tool";
+      // Relay JSON is unvalidated: a non-string tool_name would render as
+      // "[object Object]" in the approval card.
+      const rawTool = payload.tool_name;
+      const tool = typeof rawTool === "string" && rawTool ? rawTool : "Tool";
       const input = payload.tool_input ?? {};
       State.pendingApproval = {
         requestId,

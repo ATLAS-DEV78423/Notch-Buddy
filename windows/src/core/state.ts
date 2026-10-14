@@ -473,6 +473,17 @@ class AppState {
 
   /** Sets the active view and marks the UI dirty (island geometry follows in syncDom). */
   setView(v: IslandViewName) {
+    // Timer ownership changes when navigation changes surface, not while that
+    // surface is rendering. Keep the previous reset semantics but notify once.
+    if (v === "pomodoro" && this.timer.mode === "stopwatch") {
+      this.timer.mode = "focus";
+      this.timer.running = false;
+      this.timer.remaining = FOCUS_SECONDS;
+    } else if (v === "stopwatch" && this.timer.mode !== "stopwatch") {
+      this.timer.mode = "stopwatch";
+      this.timer.running = false;
+      this.timer.remaining = 0;
+    }
     this.view = v;
     this.notify();
   }

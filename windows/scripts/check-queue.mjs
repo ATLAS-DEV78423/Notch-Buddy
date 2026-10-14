@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 import assert from "node:assert";
 
 const out = mkdtempSync(join(tmpdir(), "rq-"));
@@ -35,6 +36,14 @@ try {
   p.enqueue("o2", 2, 2); p.enqueue("o3", 2, 3); p.enqueue("o4", 2, 4); p.enqueue("o5", 2, 5);
   assert.equal(p.size(), 5);
   assert.equal(p.dequeue(100000).prio, 0);
+
+  const reactionsSource = readFileSync("src/mochi/reactions.ts", "utf8");
+  const islandSource = readFileSync("src/island/island.ts", "utf8");
+  const styleSource = readFileSync("src/style.css", "utf8");
+  assert.match(reactionsSource, /const opts = pendingOpts\.get\(next\.kind\);\s+pendingOpts\.delete\(next\.kind\);/s);
+  assert.match(islandSource, /animationcancel/);
+  assert.match(islandSource, /setTimeout\(finish/);
+  assert.doesNotMatch(styleSource, /\*\s*,\s*\*::before\s*,\s*\*::after\s*\{[^}]*0\.01ms/s);
 
   console.log("queue checks OK");
 } finally {

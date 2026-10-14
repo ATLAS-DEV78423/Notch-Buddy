@@ -69,6 +69,9 @@ export const NOTCH_H = 32;
 export const COMPACT_W = 288; // NOTCH_W + 104
 export const EXPANDED_W = 640;
 
+/** Minimum left content start that keeps ordinary expanded surfaces clear of Pip. */
+export const PIP_SAFE_INSET = 120;
+
 export const ROUNDED_CORNER = 14; // hidden / compact
 export const EXPANDED_CORNER = 22;
 

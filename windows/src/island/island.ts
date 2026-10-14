@@ -105,6 +105,7 @@ export class Island {
   private confusedRecovery: number | null = null;
   /** Task 6 exit handlers, one per view element (a stale one is dropped on re-entry). */
   private readonly leaveHandlers = new WeakMap<HTMLElement, (e: AnimationEvent) => void>();
+  private readonly leaveTimers = new WeakMap<HTMLElement, number>();
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
 
@@ -177,8 +178,8 @@ export class Island {
         State.pendingApproval = null;
         State.isPinned = false;
         this.fsm.pinned = false;
-        State.updateTask("integration_claude", "working");
-        State.setPillBadge("integration_claude", null);
+        State.updateTask(req.taskId, "working");
+        State.setPillBadge(req.taskId, null);
         this.setView(State.defaultView());
       },
       toggleSound: () => {
@@ -1031,7 +1032,7 @@ export class Island {
       const on = name === State.view;
       // Task 6 exit seam: the outgoing view keeps a short view-out before it
       // drops back to the base .view state (asymmetric enter/exit).
-      if (on) view.el.classList.remove("view-leaving");
+      if (on) this.cancelLeave(view.el);
       else if (view.el.classList.contains("on")) this.leaveView(view.el);
       view.el.classList.toggle("on", on);
       if (on) view.sync();
@@ -1089,20 +1090,42 @@ export class Island {
 
   /** Task 6: runs the outgoing view's view-out, then drops the class. Filtered
    *  by animation name so a child animation's end can't cut the exit short. */
+  private cancelLeave(el: HTMLElement) {
+    const handler = this.leaveHandlers.get(el);
+    if (handler) {
+      el.removeEventListener("animationend", handler);
+      el.removeEventListener("animationcancel", handler);
+      this.leaveHandlers.delete(el);
+    }
+    const timer = this.leaveTimers.get(el);
+    if (timer != null) {
+      window.clearTimeout(timer);
+      this.leaveTimers.delete(el);
+    }
+    el.classList.remove("view-leaving");
+  }
+
   private leaveView(el: HTMLElement) {
-    // Drop any handler from a previous leave before arming a new one, so rapid
-    // re-entry can never stack listeners on the same element.
-    const prev = this.leaveHandlers.get(el);
-    if (prev) el.removeEventListener("animationend", prev);
+    // Drop any handler/timer from a previous leave before arming a new one, so
+    // rapid re-entry can never stack listeners or leave a stale class behind.
+    this.cancelLeave(el);
     el.classList.add("view-leaving");
-    const done = (e: AnimationEvent) => {
-      if (e.animationName !== "view-out") return;
+    const finish = () => {
       el.removeEventListener("animationend", done);
+      el.removeEventListener("animationcancel", done);
+      const timer = this.leaveTimers.get(el);
+      if (timer != null) this.leaveTimers.delete(el);
       this.leaveHandlers.delete(el);
       el.classList.remove("view-leaving");
     };
+    const done = (e: AnimationEvent) => {
+      if (e.animationName !== "view-out") return;
+      finish();
+    };
     this.leaveHandlers.set(el, done);
     el.addEventListener("animationend", done);
+    el.addEventListener("animationcancel", done);
+    this.leaveTimers.set(el, window.setTimeout(finish, 180));
   }
 
   /** Applies settings coming from Rust at boot. */

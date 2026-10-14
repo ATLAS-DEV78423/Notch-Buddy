@@ -1049,6 +1049,10 @@ body {
 }
 
 .who-row .n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 600 12px var(--font);
   color: var(--ink);
 }
@@ -1233,6 +1237,7 @@ input[type="range"]::-webkit-slider-thumb {
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 12px 12px 100px; }
 .widget { border: 0; color: inherit; font: inherit; text-align: left; width: 100%; background: #1D1F23; border-radius: 12px; padding: 10px; cursor: pointer; transition: transform 0.15s; }
 .widget:hover { transform: scale(1.02); }
+.widget:active { background: #252830; }
 button:not(:disabled) { cursor: pointer; }
 .widget:focus-visible, .pill:focus-visible, .tab:focus-visible, .header-actions button:focus-visible,
 .btn:focus-visible, .link-btn:focus-visible, .icon-btn:focus-visible, .send-btn:focus-visible,
@@ -1608,7 +1613,7 @@ button:not(:disabled) { cursor: pointer; }
    viewer for the selected step (diff / command / target), with the pending
    permission inline when the agent can receive a decision. */
 
-.session { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: 108px; }
+.session { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-left: var(--pip-safe-inset, 108px); }
 .session-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .session-head .name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .session-head .chip {
@@ -1762,6 +1767,7 @@ button:not(:disabled) { cursor: pointer; }
 .cc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .cc-label { font-size: 11px; color: var(--dim-2); width: 56px; flex: none; }
 .cc-slider { position: relative; flex: 1; height: 6px; background: var(--tab-on); border-radius: 3px; cursor: pointer; touch-action: none; transition: transform 0.12s ease-out; }
+.cc-slider:focus-visible, .media-progress:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .cc-slider.dragging { transform: scaleY(1.5); }
 .cc-slider-fill { height: 100%; width: 100%; background: var(--accent); border-radius: 3px; transform-origin: left center; transition: transform 250ms cubic-bezier(0.23, 1, 0.32, 1); }
 .cc-slider-knob { position: absolute; top: 50%; width: 14px; height: 14px; margin-top: -7px; margin-left: -7px; left: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card); transition: left 250ms cubic-bezier(0.23, 1, 0.32, 1); pointer-events: none; }
@@ -2284,7 +2290,7 @@ button:not(:disabled) { cursor: pointer; }
   color: #0b0c0e;
   display: grid;
   place-items: center;
-  cursor: default;
+  cursor: pointer;
   transition: transform 0.08s ease-out;
 }
 
@@ -2763,16 +2769,28 @@ button:not(:disabled) { cursor: pointer; }
 }
 
 /* ── Reduced motion (OS setting only) ───────────────────────────────────────
-   Windows: Settings → Accessibility → Animation effects → off. Everything
-   collapses to near-instant; infinite decorations stop; springs snap via JS. */
+   Windows: Settings → Accessibility → Animation effects → off. Springs snap
+   via JS; only movement and decorative loops lose their transitions. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
+  .view,
+  .view.on,
+  .view-leaving,
+  #content,
+  #header,
+  #compact-status,
+  #mini-grid,
+  .tab-seg-thumb,
+  .media-album-art,
+  .media-progress-fill,
+  .media-progress-knob,
+  .cc-slider,
+  .cc-slider-fill,
+  .cc-slider-knob,
+  .cc-value,
+  .mc-btn,
+  .mc-vol,
+  .send-btn {
+    transition: none !important;
   }
 
   .shimmer,

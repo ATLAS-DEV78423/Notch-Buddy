@@ -20,12 +20,13 @@ async function save() {
 
 // ── Reusable bits ─────────────────────────────────────────────────────────────
 
-function toggle(on: boolean, onChange: (v: boolean) => void): HTMLElement {
-  const el = h("button", { class: on ? "switch on" : "switch", "aria-pressed": on });
+function toggle(on: boolean, onChange: (v: boolean) => void, label: string): HTMLElement {
+  const el = h("button", { class: on ? "switch on" : "switch", role: "switch", "aria-label": label, "aria-checked": String(on) });
   squishSwitch(el as HTMLButtonElement);
   el.addEventListener("click", () => {
     const next = !el.classList.contains("on");
     el.classList.toggle("on", next);
+    el.setAttribute("aria-checked", String(next));
     onChange(next);
   });
   return el;
@@ -439,7 +440,11 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
 
   for (const def of INTEGRATIONS) {
     const active = settings.activeIntegrations.includes(def.id);
-    const sw = h("button", { class: active ? "switch on" : "switch" });
+    const sw = h("button", {
+      class: active ? "switch on" : "switch",
+      "aria-label": def.name,
+      "aria-pressed": String(active),
+    });
     squishSwitch(sw as HTMLButtonElement);
     sw.addEventListener("click", () => {
       const on = settings.activeIntegrations.includes(def.id);
@@ -450,6 +455,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
         settings.activeIntegrations = [...settings.activeIntegrations, def.id];
       }
       sw.classList.toggle("on", !on);
+      sw.setAttribute("aria-pressed", String(!on));
       updateNote();
       void save();
     });
@@ -618,7 +624,7 @@ function generalSection(): HTMLElement {
     h("h2", {}, h("span", { text: "General" })),
     h("div", { class: "row" },
       h("label", { text: "Sound" }),
-      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
+      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }, "Sound"),
       volume,
     ),
     h("div", { class: "row" },
@@ -632,7 +638,7 @@ function generalSection(): HTMLElement {
     ),
     h("div", { class: "row" },
       h("label", { text: "Launch at startup" }),
-      toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
+      toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }, "Launch at startup"),
     ),
   );
 }

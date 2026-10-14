@@ -11,6 +11,9 @@ const domSource = readFileSync(resolve(root, "src/views/dom.ts"), "utf8");
 const viewsSource = readFileSync(resolve(root, "src/views/views.ts"), "utf8");
 const chatSource = readFileSync(resolve(root, "src/views/chat.ts"), "utf8");
 const integrationsSource = readFileSync(resolve(root, "src/views/integrations.ts"), "utf8");
+const settingsSource = readFileSync(resolve(root, "src/settings/main.ts"), "utf8");
+const styleSource = readFileSync(resolve(root, "src/style.css"), "utf8");
+const layoutSource = readFileSync(resolve(root, "src/core/layout.ts"), "utf8");
 const result = await build({
   stdin: { contents: `
     export { State } from "./src/core/state";
@@ -19,12 +22,23 @@ const result = await build({
     export { setPrimaryEngine, setCondition, react, tickReactions } from "./src/mochi/reactions";
     export { batteryTier } from "./src/ui/batteryicon";
     export { setPrefersReduced } from "./src/core/anim";
+    export { h } from "./src/views/dom";
+    export { VIEW_LAYOUTS, PIP_SAFE_INSET } from "./src/core/layout";
+    export { Bridge } from "./src/core/bridge";
+    export { buildMediaView, buildControlCenter, buildSettings, buildDashboardView, buildWeatherView } from "./src/views/views";
     export { captureStep, stepKind, diffForStep, diffLines, diffStat, modelFromPayload, thinkingFromPayload } from "./src/core/steps";
   `, resolveDir: root },
   bundle: true, platform: "node", format: "esm", write: false,
+  plugins: [{ name: "test-view-exports", setup(build) {
+    build.onLoad({ filter: /[/\\]views[/\\]views\.ts$/ }, () => ({
+      contents: viewsSource + "\nexport { buildMediaView, buildControlCenter, buildSettings, buildDashboardView, buildWeatherView };",
+      loader: "ts", resolveDir: resolve(root, "src/views"),
+    }));
+  } }],
 });
 const app = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const { State, BotEngine, startPowerWatch, setPrimaryEngine, setCondition, react, tickReactions, batteryTier, setPrefersReduced, captureStep, stepKind, diffForStep, diffLines, diffStat, modelFromPayload, thinkingFromPayload } = app;
+const { VIEW_LAYOUTS, PIP_SAFE_INSET } = app;
 
 function setup() {
   State.tasks = [];
@@ -315,4 +329,267 @@ test("DOM text and attributes never fall back to object coercion", () => {
   assert.match(domSource, /function safeText\(value: unknown\)/);
   assert.match(domSource, /JSON\.stringify\(value\)/);
   assert.match(domSource, /textContent = safeText\(v\)/);
+});
+
+// Just the DOM surface these views use; execute their real listeners and syncs.
+class TestElement {
+  constructor(tag) {
+    this.tagName = tag;
+    this.children = [];
+    this.attrs = new Map();
+    this.listeners = new Map();
+    this.dataset = {};
+    this.style = { setProperty() {} };
+    this.className = "";
+    this.clientWidth = 100;
+    this.classList = {
+      contains: (name) => this.className.split(" ").includes(name),
+      toggle: (name, on) => {
+        const classes = new Set(this.className.split(" ").filter(Boolean));
+        if (on ?? !classes.has(name)) classes.add(name); else classes.delete(name);
+        this.className = [...classes].join(" ");
+      },
+      add: (name) => this.classList.toggle(name, true),
+      remove: (name) => this.classList.toggle(name, false),
+    };
+  }
+  set textContent(text) { this.children = []; this.text = String(text); }
+  get textContent() { return (this.text ?? "") + this.children.map((c) => c.textContent ?? String(c)).join(""); }
+  append(...children) { this.children.push(...children); }
+  replaceChildren(...children) { this.text = ""; this.children = children; }
+  setAttribute(name, value) { this.attrs.set(name, String(value)); }
+  getAttribute(name) { return this.attrs.get(name) ?? null; }
+  hasAttribute(name) { return this.attrs.has(name); }
+  removeAttribute(name) { this.attrs.delete(name); }
+  addEventListener(type, listener) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+  fire(type, props = {}) {
+    const event = { preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...props };
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+    return event;
+  }
+  focus() {}
+  setPointerCapture() {}
+  getBoundingClientRect() { return { left: 0, width: 100 }; }
+}
+function withDOM(run) {
+  const before = { document: globalThis.document, window: globalThis.window };
+  const timers = new Map();
+  let id = 0;
+  globalThis.document = {
+    createElement: (tag) => new TestElement(tag),
+    createElementNS: (_ns, tag) => new TestElement(tag),
+    createTextNode: (text) => ({ textContent: text }),
+  };
+  globalThis.window = {
+    setTimeout: (fn) => { timers.set(++id, fn); return id; },
+    clearTimeout: (key) => timers.delete(key),
+  };
+  try { run(() => { for (const fn of timers.values()) fn(); timers.clear(); }); }
+  finally { Object.assign(globalThis, before); }
+}
+function find(el, predicate) {
+  if (predicate(el)) return el;
+  for (const child of el.children ?? []) {
+    const match = find(child, predicate);
+    if (match) return match;
+  }
+}
+
+test("volume and brightness keyboard events share the bounded apply/Bridge path", () => withDOM((flush) => {
+  const before = { setVolume: app.Bridge.setVolume, setBrightness: app.Bridge.setBrightness };
+  const calls = [];
+  app.Bridge.setVolume = (v) => calls.push(["volume", v]);
+  app.Bridge.setBrightness = (v) => calls.push(["brightness", v]);
+  try {
+    State.volume = { level: 0.5, muted: false };
+    State.brightness = { level: 0.5 };
+    const view = app.buildControlCenter();
+    view.sync(); /*
+    console.log("DEBUG", view.el.children?.map((x) => [x.className, x.children?.map((y) => [y.className, y.attrs && [...y.attrs])])));
+    */
+    for (const [label, key, state] of [["Volume", "volume", State.volume], ["Brightness", "brightness", State.brightness]]) {
+      const slider = find(view.el, (el) => el.getAttribute?.("aria-label") === label);
+      assert.ok(slider, `${label} is named`);
+      assert.equal(slider.getAttribute("role"), "slider");
+      assert.equal(slider.getAttribute("tabindex"), "0");
+      assert.equal(slider.getAttribute("aria-valuenow"), "50");
+      assert.equal(slider.fire("keydown", { key: "ArrowRight" }).defaultPrevented, true);
+      assert.equal(state.level, 0.51);
+      flush();
+      assert.deepEqual(calls.at(-1), [key, 0.51]);
+      slider.fire("keydown", { key: "End" });
+      slider.fire("keydown", { key: "ArrowUp" });
+      flush();
+      assert.equal(state.level, 1);
+      assert.equal(slider.getAttribute("aria-valuenow"), "100");
+      slider.fire("keydown", { key: "Home" });
+      slider.fire("keydown", { key: "ArrowDown" });
+      flush();
+      assert.equal(state.level, 0);
+      slider.fire("keydown", { key: "PageUp" });
+      flush();
+      assert.deepEqual(calls.at(-1), [key, 0.1]);
+      assert.equal(slider.fire("keydown", { key: "Tab" }).defaultPrevented, undefined);
+    }
+    const mute = find(view.el, (el) => el.className === "cc-icon-btn");
+    State.volume.muted = true;
+    view.sync();
+    assert.equal(mute.getAttribute("aria-label"), "Unmute");
+    assert.equal(mute.getAttribute("aria-pressed"), "true");
+    State.volume.muted = false;
+    view.sync();
+    assert.equal(mute.getAttribute("aria-label"), "Mute");
+    assert.equal(mute.getAttribute("aria-pressed"), "false");
+  } finally { Object.assign(app.Bridge, before); }
+}));
+
+test("media seek keyboard and pointer input use the same bounded Bridge path", () => withDOM(() => {
+  const before = app.Bridge.mediaSeek;
+  const calls = [];
+  app.Bridge.mediaSeek = (v) => calls.push(v);
+  try {
+    State.media = { track: "Track", artist: "Artist", albumArt: "", duration: 100, position: 50, playing: false };
+    const view = app.buildMediaView();
+    view.sync();
+    const slider = find(view.el, (el) => el.className === "media-progress");
+    assert.equal(slider.getAttribute("role"), "slider");
+    assert.equal(slider.getAttribute("aria-valuenow"), "50");
+    for (const [key, expected] of [["ArrowRight", 55], ["ArrowLeft", 50], ["Home", 0], ["End", 100], ["PageUp", 100]]) {
+      assert.equal(slider.fire("keydown", { key }).defaultPrevented, true);
+      assert.equal(calls.at(-1), expected);
+    }
+    slider.fire("click", { clientX: 200 });
+    assert.equal(calls.at(-1), 100);
+    State.media.duration = 0;
+    view.sync();
+    const count = calls.length;
+    slider.fire("keydown", { key: "End" });
+    slider.fire("click", { clientX: 50 });
+    assert.equal(calls.length, count);
+    assert.equal(slider.getAttribute("aria-disabled"), "true");
+    State.media = null;
+    view.sync();
+    slider.fire("keydown", { key: "Home" });
+    assert.equal(calls.length, count);
+  } finally { app.Bridge.mediaSeek = before; }
+}));
+
+test("media seek keeps rapid keyboard input and pointer dragging responsive", () => withDOM(() => {
+  const before = app.Bridge.mediaSeek;
+  const calls = [];
+  app.Bridge.mediaSeek = (v) => calls.push(v);
+  try {
+    State.media = { track: "Track", artist: "Artist", albumArt: "", duration: 100, position: 50, playing: false };
+    const view = app.buildMediaView();
+    view.sync();
+    const slider = find(view.el, (el) => el.className === "media-progress");
+    slider.fire("keydown", { key: "ArrowRight" });
+    slider.fire("keydown", { key: "ArrowRight" });
+    assert.deepEqual(calls.slice(-2), [55, 60]);
+    slider.fire("pointerdown", { pointerId: 7, clientX: 20 });
+    slider.fire("pointermove", { pointerId: 7, clientX: 80 });
+    slider.fire("pointerup", { pointerId: 7, clientX: 80 });
+    assert.equal(calls.at(-1), 80);
+    assert.equal(slider.getAttribute("aria-valuenow"), "80");
+  } finally { app.Bridge.mediaSeek = before; }
+}));
+
+test("runtime media/weather text and settings state stay safe and current", () => withDOM(() => {
+  const circular = {}; circular.self = circular;
+  State.media = { track: { title: "Track" }, artist: circular, albumArt: "", duration: 0, position: 0, playing: true };
+  const dashboard = app.buildDashboardView();
+  dashboard.sync();
+  assert.ok(dashboard.el.textContent.includes('{"title":"Track"}'));
+  assert.ok(!dashboard.el.textContent.includes("[object Object]"));
+  const media = app.buildMediaView();
+  media.sync();
+  assert.ok(media.el.textContent.includes('{"title":"Track"}'));
+  assert.ok(!media.el.textContent.includes("[object Object]"));
+  State.weather = { condition: { label: "Sunny" }, temp: 20, humidity: { value: 40 }, wind: circular };
+  const weather = app.buildWeatherView();
+  weather.sync();
+  assert.ok(weather.el.textContent.includes('{"label":"Sunny"}'));
+  assert.ok(weather.el.textContent.includes('Humidity: {"value":40}%'));
+  assert.ok(!weather.el.textContent.includes("[object Object]"));
+  const settings = app.buildSettings({ toggleSound() { State.settings.soundEnabled = !State.settings.soundEnabled; } });
+  settings.sync();
+  const sound = find(settings.el, (el) => el.getAttribute?.("role") === "switch");
+  assert.equal(sound.getAttribute("aria-label"), "Sound");
+  sound.fire("click"); settings.sync();
+  assert.equal(sound.getAttribute("aria-checked"), String(State.settings.soundEnabled));
+  const text = app.h("div", { text: circular });
+  assert.equal(text.textContent, "");
+}));
+
+test("header sound, settings-window switch and task deletion expose updated names/states", () => {
+  assert.match(viewsSource, /soundBtn\.setAttribute\("aria-label", State\.settings\.soundEnabled \? "Mute sounds" : "Unmute sounds"\)/);
+  assert.match(viewsSource, /soundBtn\.setAttribute\("aria-pressed", String\(!State\.settings\.soundEnabled\)\)/);
+  assert.match(viewsSource, /class: "task-del",\s*"aria-label": `Delete task: \$\{safeText\(text\)\}`/s);
+  assert.match(settingsSource, /el\.setAttribute\("aria-checked", String\(next\)\)/);
+  assert.match(settingsSource, /toggle\(settings\.soundEnabled, [^\n]*, "Sound"\)/);
+  assert.match(styleSource, /\.send-btn \{[^}]*cursor: pointer;/s);
+  assert.match(styleSource, /\.cc-slider:focus-visible/);
+  assert.match(styleSource, /\.media-progress:focus-visible/);
+});
+
+test("system and integration toggles expose their current state", () => {
+  assert.match(viewsSource, /initialOn \? " on" : ""/);
+  assert.match(viewsSource, /"aria-pressed": String\(initialOn\)/);
+  assert.match(viewsSource, /State\.systemControls\.nightLight/);
+  assert.match(viewsSource, /State\.systemControls\.dnd/);
+  assert.match(viewsSource, /btn\.setAttribute\("aria-pressed", String\(on\)\)/);
+  assert.match(settingsSource, /"aria-label": def\.name/);
+  assert.match(settingsSource, /"aria-pressed": String\(active\)/);
+  assert.match(settingsSource, /sw\.setAttribute\("aria-pressed", String\(!on\)\)/);
+});
+
+test("long agent labels are bounded and the error view has no empty n8n action", () => {
+  const whoStyles = styleSource.match(/\.who-row \.n \{[^}]*\}/s)?.[0] ?? "";
+  assert.match(whoStyles, /min-width: 0;/);
+  assert.match(whoStyles, /overflow: hidden;/);
+  assert.match(whoStyles, /text-overflow: ellipsis;/);
+  assert.match(whoStyles, /white-space: nowrap;/);
+  assert.doesNotMatch(viewsSource, /btn\("Open in n8n"/);
+  assert.doesNotMatch(viewsSource, /actions\.openUrl\(""\)/);
+});
+
+test("timer view selection owns mode changes instead of render sync", () => {
+  assert.doesNotMatch(viewsSource, /if \(t\.mode === "stopwatch"\) State\.timerSetMode\("focus"\)/);
+  assert.doesNotMatch(viewsSource, /if \(t\.mode !== "stopwatch"\) State\.timerSetMode\("stopwatch"\)/);
+  State.timer.mode = "stopwatch";
+  State.timer.running = true;
+  State.timer.remaining = 12;
+  let notifications = 0;
+  const unsubscribe = State.subscribe(() => { notifications++; });
+  try {
+    State.setView("pomodoro");
+    assert.equal(State.timer.mode, "focus");
+    assert.equal(State.timer.running, false);
+    assert.equal(notifications, 1);
+  } finally {
+    unsubscribe();
+    State.timer.mode = "focus";
+    State.timer.running = false;
+    State.timer.remaining = 1500;
+  }
+});
+
+test("unknown API status is not rendered as a known failure", () => {
+  assert.match(viewsSource, /API unavailable/);
+  assert.doesNotMatch(viewsSource, /apiBadge\.append\(dot\("#F4505E"/);
+});
+
+test("representative surfaces keep content beyond Pip with one layout-owned inset", () => {
+  assert.equal(typeof PIP_SAFE_INSET, "number");
+  for (const [view, layout] of Object.entries(VIEW_LAYOUTS)) {
+    if (["upload", "uploading", "choose", "greeting"].includes(view)) continue;
+    assert.ok(
+      layout.botX + layout.botDiameter / 2 + 8 <= PIP_SAFE_INSET,
+      `${view} content inset clears Pip`,
+    );
+  }
+  assert.match(layoutSource, /PIP_SAFE_INSET/);
+  assert.match(viewsSource, /--pip-safe-inset/);
+  assert.match(styleSource, /\.session[^}]*padding-left: var\(--pip-safe-inset/s);
+  assert.match(styleSource, /\.widget:active[^}]*background:/s);
 });

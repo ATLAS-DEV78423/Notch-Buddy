@@ -17,7 +17,7 @@ export interface AgentMeta {
 
 export const AGENT_META: Record<string, AgentMeta> = {
   hermes: { name: "Hermes", color: "#A78BFA", allowsApproval: true },
-  opencode: { name: "OpenCode", color: "#4ADE80", allowsApproval: true },
+  opencode: { name: "OpenCode", color: "#4ADE80", allowsApproval: false },
 };
 
 const FALLBACK_COLORS = ["#22C55E", "#EAB308", "#60A5FA", "#E879F9"];

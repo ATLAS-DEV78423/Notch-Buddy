@@ -76,4 +76,45 @@ The detector findings are the existing bounce/layout-transition rules elsewhere 
 
 ## Status
 
-Implementation is complete and ready to commit. Remaining concerns are the missing task brief file, the locked default Cargo target, and unobserved live visual behavior.
+The initial implementation was reviewed and the follow-up repair was completed
+in the working tree. It is not committed because this session does not create
+commits without an explicit request. Remaining concerns are the missing task
+brief file, the locked default Cargo target, and unobserved live visual
+behavior.
+
+## Reviewer follow-up repair
+
+The independent review's open interaction and semantics issues are repaired in the existing implementation:
+
+- Control-center volume and brightness tracks now expose named ARIA sliders with `tabindex="0"`, current value attributes, Arrow/Page/Home/End keyboard handling, visible focus treatment, and the same local-write/debounced Bridge commit path used by pointer and wheel input.
+- Media seeking now exposes a keyboard-operable ARIA slider. Pointer clicks and keyboard seeks share one bounded `Bridge.mediaSeek` path; duration, position, disabled state, and readable time text stay synchronized.
+- Header sound, media/control-center mute, the in-island sound switch, and the settings-window switches now expose current state through action labels plus `aria-pressed` or switch `aria-checked` semantics. The task delete control now names the task it removes.
+- Runtime media, compact-media, dashboard-weather, and weather-detail values pass through the existing safe text conversion before being inserted into DOM text paths.
+- Chat send now uses the same pointer cursor as the other interactive controls.
+
+### Follow-up review and final verification
+
+The fresh scoped review found five Important issues: missing media pointer
+dragging and optimistic rapid-seek state, unnamed integration switches,
+unsynchronized Night Light/DND state, unbounded agent labels, and the empty
+n8n error action. All five were repaired in the working tree. The first four
+were covered by failing runtime/source assertions before implementation; the
+n8n action was removed as required by the approved acceptance criteria.
+
+`windows/scripts/test-controls.mjs` now runs a dependency-free DOM shim against
+the real built TypeScript view listeners. It covers slider keyboard events,
+bounded media seek, rapid keyboard seek, pointer dragging, live mute/switch
+state updates, integration state semantics, safe object/circular runtime text,
+bounded agent-label CSS, and removal of the empty n8n action. Result:
+**24/24 passed**.
+
+Also passed from `windows/`:
+
+- `npx tsc --noEmit`
+- `npx vite build`
+- `node C:\Users\Stanley\.agents\skills\impeccable\scripts\detect.mjs --json src/style.css src/views/dom.ts src/views/views.ts src/settings/main.ts scripts/test-controls.mjs`
+
+The detector still reports only the 17 pre-existing bounce/layout-transition
+warnings. `git diff --check` passed. No live Tauri/browser visual pass was run;
+the default Cargo target may still be locked by another process, and the prior
+report records the fresh-target workaround.

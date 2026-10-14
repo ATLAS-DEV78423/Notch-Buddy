@@ -179,7 +179,11 @@ export function tickReactions(nowMs: number): void {
   if (transient && nowMs >= transient.until) transient = null;
   if (!transient) {
     const next = queue.dequeue(nowMs);
-    if (next) beginReaction(next.kind as ReactionKind, pendingOpts.get(next.kind));
+    if (next) {
+      const opts = pendingOpts.get(next.kind);
+      pendingOpts.delete(next.kind);
+      beginReaction(next.kind as ReactionKind, opts);
+    }
   }
   const r = resolve(nowMs);
   engine.setPoseOverride(r?.pose ?? null);

@@ -2,7 +2,7 @@
 // colours and wording are copied from the Swift views so both platforms read
 // identically.
 
-import { h, svg, clear, dot } from "./dom";
+import { h, svg, clear, dot, safeText } from "./dom";
 import { ICONS } from "./icons";
 import { createThoughtLine } from "../ui/thoughtline";
 import { createSpringCheck, type SpringCheck } from "../ui/springcheck";
@@ -15,7 +15,7 @@ import { prefersReduced } from "../core/anim";
 import { agentMeta } from "../core/agents";
 import { diffForStep, diffStat, stepKind, baseName, type AgentStep, type StepKind } from "../core/steps";
 import { State, type AgentTask } from "../core/state";
-import { washRGBA, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
+import { washRGBA, PIP_SAFE_INSET, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { react, setCondition } from "../mochi/reactions";
 import { createBatteryIcon, batteryWithLabel } from "../ui/batteryicon";
@@ -52,6 +52,7 @@ export interface ViewHost {
 
 function card(wash: Wash, ...children: (Node | string)[]): HTMLElement {
   const el = h("div", { class: wash ? "card wash" : "card" }, ...children);
+  el.style.setProperty("--pip-safe-inset", `${PIP_SAFE_INSET}px`);
   if (wash) el.style.setProperty("--wash", washRGBA(wash));
   return el;
 }
@@ -124,7 +125,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const tabDrop = h("button", { class: "tab", "aria-label": "Drop", title: "Drop", onclick: () => go("upload") }, svg(ICONS.plus, 13));
 
   const gearBtn = h("button", { "aria-label": "Settings", title: "Settings", onclick: () => go("settings") }, svg(ICONS.gear, 14));
-  const soundBtn = h("button", { "aria-label": "Mute", title: "Mute", onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
+  const soundBtn = h("button", { "aria-label": State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds", "aria-pressed": String(!State.settings.soundEnabled), title: State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds", onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
 
   function go(v: IslandViewName) {
     actions.blip();
@@ -180,6 +181,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
       gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
       clear(soundBtn);
       soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
+      soundBtn.title = State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds";
+      soundBtn.setAttribute("aria-label", State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds");
+      soundBtn.setAttribute("aria-pressed", String(!State.settings.soundEnabled));
       const group = groupOfView(v);
       for (const [id, tab] of groupTabs) tab.classList.toggle("active", id === group);
       setThumb(groupTabs.get(group)!);
@@ -579,7 +583,7 @@ function lighten(hex: string, amount: number): string {
 function buildEmpty(actions: ViewActions): ViewHost {
   const body = h(
     "div",
-    { class: "stack", style: "padding:0 18px 0 118px;flex-direction:row;align-items:center;gap:16px" },
+    { class: "stack", style: `padding:0 18px 0 ${PIP_SAFE_INSET}px;flex-direction:row;align-items:center;gap:16px` },
     h(
       "div",
       { style: "display:flex;flex-direction:column;gap:5px" },
@@ -598,7 +602,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const code = h("div", { class: "code" });
   const row = h("div", { class: "actions" });
-  const el = h("div", { class: "view" }, card("amber", stack(116, 16, who, code, row)));
+  const el = h("div", { class: "view" }, card("amber", stack(PIP_SAFE_INSET, 16, who, code, row)));
   let rowKey = "";
   return {
     el,
@@ -629,7 +633,7 @@ function buildQuestion(): ViewHost {
   const who = h("div");
   const title = h("div", { class: "title" });
   const row = h("div", { class: "actions" });
-  const el = h("div", { class: "view" }, card("cyan", stack(116, 16, who, title, row)));
+  const el = h("div", { class: "view" }, card("cyan", stack(PIP_SAFE_INSET, 16, who, title, row)));
   return {
     el,
     sync() {
@@ -651,9 +655,8 @@ function buildError(actions: ViewActions): ViewHost {
   const detail = h("div", { class: "detail" });
   const row = h("div", { class: "actions" },
     btn("Retry", "primary", () => actions.setView(State.defaultView())),
-    btn("Open in n8n", "secondary", () => actions.openUrl("")),
   );
-  const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));
+  const el = h("div", { class: "view" }, card("red", stack(PIP_SAFE_INSET, 16, who, title, detail, row)));
   return {
     el,
     sync() {
@@ -675,7 +678,7 @@ function buildFinished(actions: ViewActions): ViewHost {
     btn("Open terminal", "primary", () => actions.openTerminal()),
     btn("OK", "secondary", () => actions.collapse()),
   );
-  const el = h("div", { class: "view" }, card("green", stack(116, 16, who, title, row)));
+  const el = h("div", { class: "view" }, card("green", stack(PIP_SAFE_INSET, 16, who, title, row)));
   return {
     el,
     sync() {
@@ -714,10 +717,10 @@ function buildNote(): ViewHost {
 // ── In-island settings ────────────────────────────────────────────────────────
 
 function buildSettings(actions: ViewActions): ViewHost {
-  const soundSwitch = h("button", { class: "switch", onclick: () => actions.toggleSound() });
+  const soundSwitch = h("button", { class: "switch", role: "switch", "aria-label": "Sound", "aria-checked": String(State.settings.soundEnabled), onclick: () => actions.toggleSound() });
   squishSwitch(soundSwitch as HTMLButtonElement);
   const volume = h("input", {
-    type: "range", min: "0", max: "0.2", step: "0.005",
+    type: "range", min: "0", max: "0.2", step: "0.005", "aria-label": "Sound volume",
     oninput: (e: Event) => actions.setVolume(Number((e.target as HTMLInputElement).value)),
   }) as HTMLInputElement;
   const autoLabel = h("span", {});
@@ -761,6 +764,7 @@ function buildSettings(actions: ViewActions): ViewHost {
     sync() {
       const s = State.settings;
       soundSwitch.classList.toggle("on", s.soundEnabled);
+      soundSwitch.setAttribute("aria-checked", String(s.soundEnabled));
       volume.value = String(s.soundVolume);
       volume.style.opacity = s.soundEnabled ? "1" : "0.4";
       autoLabel.textContent = `Auto-close · ${Math.round(s.autoCloseInterval)}s`;
@@ -771,7 +775,7 @@ function buildSettings(actions: ViewActions): ViewHost {
         h("span", { text: "Claude Code" }),
       );
       clear(apiBadge);
-      apiBadge.append(dot("#F4505E", 6), h("span", { text: "API" }));
+      apiBadge.append(dot("#8E939C", 6), h("span", { text: "API unavailable" }));
     },
   };
 }
@@ -781,7 +785,7 @@ function buildSettings(actions: ViewActions): ViewHost {
 function buildPlaceholder(title: string, sub: string): ViewHost {
   const body = h(
     "div",
-    { class: "stack", style: "padding:0 18px 0 118px" },
+    { class: "stack", style: `padding:0 18px 0 ${PIP_SAFE_INSET}px` },
     h("div", { class: "title", text: title }),
     h("div", { class: "sub", text: sub }),
   );
@@ -842,12 +846,12 @@ function buildDashboardView(): ViewHost {
       mediaBody.style.display = m ? "" : "none";
       mediaEmpty.style.display = m ? "none" : "";
       if (m) {
-        const key = `${m.track}|${m.artist}|${m.albumArt}`;
+        const key = `${safeText(m.track)}|${safeText(m.artist)}|${m.albumArt}`;
         if (key !== mediaKey) {
           mediaKey = key;
           art.src = m.albumArt;
           art.style.display = m.albumArt ? "" : "none";
-          mediaText.replaceChildren(m.track, h("br"), m.artist);
+          mediaText.replaceChildren(safeText(m.track), h("br"), safeText(m.artist));
         }
       }
       const s = State.stats;
@@ -859,7 +863,7 @@ function buildDashboardView(): ViewHost {
       const hasW = w.condition && w.condition !== "Unavailable";
       weatherValue.style.display = hasW ? "" : "none";
       weatherEmpty.style.display = hasW ? "none" : "";
-      if (hasW) weatherValue.textContent = `${w.temp}° ${w.condition}`;
+      if (hasW) weatherValue.textContent = `${safeText(w.temp)}° ${safeText(w.condition)}`;
       else weatherEmpty.textContent = w.condition ? "Weather unavailable" : "No weather data";
       const b = State.battery;
       batteryIcon.set(b.level, b.charging);
@@ -880,7 +884,7 @@ function buildMediaView(): ViewHost {
   const artist = h("div", { class: "media-artist" });
   const fill = h("div", { class: "media-progress-fill" });
   const knob = h("div", { class: "media-progress-knob" });
-  const bar = h("div", { class: "media-progress" }, fill, knob);
+  const bar = h("div", { class: "media-progress", role: "slider", tabindex: "0", "aria-label": "Media position", "aria-valuemin": "0", "aria-valuemax": "0", "aria-valuenow": "0" }, fill, knob);
 
   // ── Apple now-playing transport: flat solid glyphs on the card ────────────
   // The reference layout: track + artist with a speaker button top-right, and
@@ -898,8 +902,9 @@ function buildMediaView(): ViewHost {
   let lastMuted: boolean | null = null;
   const volBtn = h("button", {
     class: "mc-vol",
-    "aria-label": "Mute",
-    title: "Mute",
+    "aria-label": State.volume.muted ? "Unmute" : "Mute",
+    "aria-pressed": String(State.volume.muted),
+    title: State.volume.muted ? "Unmute" : "Mute",
     onclick: () => {
       react("mute-flash");
       void Bridge.toggleMute();
@@ -919,19 +924,73 @@ function buildMediaView(): ViewHost {
       controls,
     ),
   );
-  // Click anywhere on the bar → fraction of the width → media_seek.
+  const fmt = (s: number) =>
+    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  let pendingPosition: number | null = null;
+  let dragging = false;
+  const paintPosition = (position: number, duration: number) => {
+    const bounded = Math.max(0, Math.min(duration, position));
+    const frac = clamp01(duration > 0 ? bounded / duration : 0);
+    fill.style.transform = `scaleX(${frac})`;
+    knob.style.left = `${frac * 100}%`;
+    bar.style.setProperty("--seek", `${frac * 100}%`);
+    bar.setAttribute("aria-valuenow", String(bounded));
+    bar.setAttribute("aria-valuetext", `${fmt(bounded)} of ${fmt(duration)}`);
+  };
+  const seek = (position: number) => {
+    const m = State.media;
+    if (!m || m.duration <= 0) return;
+    pendingPosition = Math.max(0, Math.min(m.duration, position));
+    paintPosition(pendingPosition, m.duration);
+    void Bridge.mediaSeek(pendingPosition);
+  };
+  const seekFromPointer = (clientX: number) => {
+    const m = State.media;
+    if (!m || m.duration <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    seek((clientX - rect.left) / rect.width * m.duration);
+  };
+  bar.addEventListener("pointerdown", (e) => {
+    if (!State.media || State.media.duration <= 0) return;
+    dragging = true;
+    bar.setPointerCapture?.(e.pointerId);
+    seekFromPointer(e.clientX);
+    e.preventDefault();
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (dragging) seekFromPointer(e.clientX);
+  });
+  const endDrag = () => { dragging = false; };
+  bar.addEventListener("pointerup", endDrag);
+  bar.addEventListener("pointercancel", endDrag);
+  // Pointer and keyboard use the same bounded media_seek path.
   bar.addEventListener("click", (ev) => {
     const m = State.media;
     if (!m || !m.duration) return;
     const rect = bar.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-    void Bridge.mediaSeek(frac * m.duration);
+    if (rect.width <= 0) return;
+    seek((ev.clientX - rect.left) / rect.width * m.duration);
+  });
+  bar.addEventListener("keydown", (e) => {
+    const m = State.media;
+    if (!m || m.duration <= 0) return;
+    let next = pendingPosition ?? m.position;
+    switch (e.key) {
+      case "ArrowRight": case "ArrowUp": next += 5; break;
+      case "ArrowLeft": case "ArrowDown": next -= 5; break;
+      case "PageUp": next += m.duration * 0.1; break;
+      case "PageDown": next -= m.duration * 0.1; break;
+      case "Home": next = 0; break;
+      case "End": next = m.duration; break;
+      default: return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    seek(next);
   });
   const el = h("div", { class: "view" }, player, empty);
   player.style.display = "none";
-
-  const fmt = (s: number) =>
-    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   let lastArt = "";
   let lastPlaying = false;
@@ -942,7 +1001,15 @@ function buildMediaView(): ViewHost {
       const m = State.media;
       empty.style.display = m ? "none" : "block";
       player.style.display = m ? "flex" : "none";
-      if (!m) return;
+      bar.setAttribute("aria-disabled", String(!m || m.duration <= 0));
+      bar.setAttribute("tabindex", m && m.duration > 0 ? "0" : "-1");
+      if (!m) {
+        pendingPosition = null;
+        return;
+      }
+      if (m.duration <= 0) pendingPosition = null;
+      else if (pendingPosition !== null && Math.abs(m.position - pendingPosition) < 0.5) pendingPosition = null;
+      const position = m.duration > 0 ? pendingPosition ?? m.position : 0;
       // Art only rides track changes — never blank it on a 1 Hz tick. The swap
       // cross-fades so a new cover glides in instead of popping.
       if (m.albumArt && m.albumArt !== lastArt) {
@@ -953,21 +1020,19 @@ function buildMediaView(): ViewHost {
         art.classList.add("art-in");
       }
       artWrap.style.display = m.albumArt ? "" : "none";
-      const trackKey = `${m.track}|${m.artist}`;
+      const trackKey = `${safeText(m.track)}|${safeText(m.artist)}`;
       if (trackKey !== lastTrackKey) {
         lastTrackKey = trackKey;
-        track.textContent = m.track;
-        artist.textContent = m.artist;
+        track.textContent = safeText(m.track);
+        artist.textContent = safeText(m.artist);
         track.classList.remove("tick");
         void track.offsetWidth;
         track.classList.add("tick");
       }
-      const frac = clamp01(m.duration > 0 ? m.position / m.duration : 0);
-      fill.style.transform = `scaleX(${frac})`;
-      knob.style.left = `${frac * 100}%`;
-      bar.style.setProperty("--seek", `${frac * 100}%`);
+      paintPosition(position, m.duration);
+      bar.setAttribute("aria-valuemax", String(Math.max(0, m.duration)));
       time.textContent = m.duration
-        ? `${fmt(m.position)} / ${fmt(m.duration)}`
+        ? `${fmt(position)} / ${fmt(m.duration)}`
         : "";
       if (m.playing !== lastPlaying) {
         lastPlaying = m.playing;
@@ -981,6 +1046,7 @@ function buildMediaView(): ViewHost {
         volBtn.replaceChildren(svg(lastMuted ? ICONS.speakerOff : ICONS.mediaVolume, 15));
         volBtn.title = lastMuted ? "Unmute" : "Mute";
         volBtn.setAttribute("aria-label", lastMuted ? "Unmute" : "Mute");
+        volBtn.setAttribute("aria-pressed", String(lastMuted));
       }
     },
   };
@@ -992,10 +1058,10 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 function buildControlCenter(): ViewHost {
   /** Drag (pointerdown/move) + scroll wheel. Writes State locally right away,
    *  invokes the command debounced — the PS worker costs 1-3 s to spawn. */
-  const makeSlider = (write: (v: number) => void, commit: (v: number) => void, flash: (v: number) => void) => {
+  const makeSlider = (label: string, write: (v: number) => void, commit: (v: number) => void, flash: (v: number) => void) => {
     const fill = h("div", { class: "cc-slider-fill" });
     const knob = h("div", { class: "cc-slider-knob", "aria-hidden": "true" });
-    const track = h("div", { class: "cc-slider" }, fill, knob);
+    const track = h("div", { class: "cc-slider", role: "slider", tabindex: "0", "aria-label": label, "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": "0" }, fill, knob);
     const valueEl = h("span", { class: "cc-value", "aria-hidden": "true" });
     let dragging = false;
     let trackRect: DOMRect | null = null;
@@ -1011,6 +1077,8 @@ function buildControlCenter(): ViewHost {
       fill.style.transform = `scaleX(${v})`;
       const w = track.clientWidth - 14;
       knob.style.left = `${7 + v * Math.max(0, w)}px`;
+      track.setAttribute("aria-valuenow", String(Math.round(v * 100)));
+      track.setAttribute("aria-valuetext", `${Math.round(v * 100)}%`);
     };
     // Emil: no decoration without feedback purpose — the readout only flashes
     // on interaction (apply/wheel), never on external sync() or seed-on-open.
@@ -1034,6 +1102,7 @@ function buildControlCenter(): ViewHost {
     };
 
     track.addEventListener("pointerdown", (e) => {
+      track.focus();
       dragging = true;
       trackRect = track.getBoundingClientRect();
       track.classList.add("dragging");
@@ -1052,6 +1121,21 @@ function buildControlCenter(): ViewHost {
     };
     track.addEventListener("pointerup", end);
     track.addEventListener("pointercancel", end);
+    track.addEventListener("keydown", (e) => {
+      let next = value;
+      switch (e.key) {
+        case "ArrowRight": case "ArrowUp": next += 0.01; break;
+        case "ArrowLeft": case "ArrowDown": next -= 0.01; break;
+        case "PageUp": next += 0.1; break;
+        case "PageDown": next -= 0.1; break;
+        case "Home": next = 0; break;
+        case "End": next = 1; break;
+        default: return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      apply(next);
+    });
     track.addEventListener(
       "wheel",
       (e) => {
@@ -1075,6 +1159,7 @@ function buildControlCenter(): ViewHost {
   };
 
   const volume = makeSlider(
+    "Volume",
     (v) => void (State.volume.level = v),
     (v) => void Bridge.setVolume(v),
     (v) => {
@@ -1085,6 +1170,7 @@ function buildControlCenter(): ViewHost {
     },
   );
   const brightness = makeSlider(
+    "Brightness",
     (v) => void (State.brightness.level = v),
     (v) => void Bridge.setBrightness(v),
     (v) => react("brightness", { intensity: v }),
@@ -1095,8 +1181,9 @@ function buildControlCenter(): ViewHost {
     "button",
     {
       class: "cc-icon-btn",
-      "aria-label": "Mute",
-      title: "Mute",
+      "aria-label": State.volume.muted ? "Unmute" : "Mute",
+      "aria-pressed": String(State.volume.muted),
+      title: State.volume.muted ? "Unmute" : "Mute",
       onclick: () => {
         react("mute-flash");
         void Bridge.toggleMute();
@@ -1110,14 +1197,17 @@ function buildControlCenter(): ViewHost {
   const toggle = (
     label: string,
     run: () => Promise<boolean | null>,
+    initialOn: boolean,
     opts: { cls: string; icon: string; onFlip: (on: boolean) => void },
   ) => {
     const btn = h("button", {
-      class: `cc-toggle ${opts.cls}`,
+      class: `cc-toggle ${opts.cls}${initialOn ? " on" : ""}`,
+      "aria-pressed": String(initialOn),
       onclick: async () => {
         const on = await run();
         if (on === null) return;
         btn.classList.toggle("on", on);
+        btn.setAttribute("aria-pressed", String(on));
         opts.onFlip(on);
       },
     },
@@ -1126,17 +1216,21 @@ function buildControlCenter(): ViewHost {
     );
     return btn;
   };
-  const nightBtn = toggle("Night light", () => Bridge.toggleNightLight(), {
+  const nightBtn = toggle("Night light", () => Bridge.toggleNightLight(), State.systemControls.nightLight, {
     cls: "night",
     icon: ICONS.sunMax,
-    onFlip: (on) => react(on ? "night-light-on" : "night-light-off"),
+    onFlip: (on) => {
+      State.systemControls.nightLight = on;
+      react(on ? "night-light-on" : "night-light-off");
+    },
   });
-  const dndBtn = toggle("Do not disturb", () => Bridge.toggleDnd(), {
+  const dndBtn = toggle("Do not disturb", () => Bridge.toggleDnd(), State.systemControls.dnd, {
     cls: "dnd",
     icon: ICONS.moon,
     // Pip dozes while it's on — the engine floats z's from the sleep pose —
     // and blinks awake on the flip off.
     onFlip: (on) => {
+      State.systemControls.dnd = on;
       setCondition("dnd-sleep", on);
       if (!on) react("dnd-wake");
     },
@@ -1214,10 +1308,16 @@ function buildControlCenter(): ViewHost {
     sync() {
       volume.sync(State.volume.level);
       brightness.sync(State.brightness.level);
+      nightBtn.classList.toggle("on", State.systemControls.nightLight);
+      nightBtn.setAttribute("aria-pressed", String(State.systemControls.nightLight));
+      dndBtn.classList.toggle("on", State.systemControls.dnd);
+      dndBtn.setAttribute("aria-pressed", String(State.systemControls.dnd));
       if (State.volume.muted !== lastMuted) {
         lastMuted = State.volume.muted;
         muteBtn.replaceChildren(svg(lastMuted ? ICONS.speakerOff : ICONS.mediaVolume, 15));
         muteBtn.title = lastMuted ? "Unmute" : "Mute";
+        muteBtn.setAttribute("aria-label", lastMuted ? "Unmute" : "Mute");
+        muteBtn.setAttribute("aria-pressed", String(lastMuted));
       }
     },
   };
@@ -1556,6 +1656,7 @@ function buildPomodoroView(): ViewHost {
       check.el,
       h("button", {
         class: "task-del",
+        "aria-label": `Delete task: ${safeText(text)}`,
         text: "×",
         onclick: () => {
           const at = State.timer.tasks.findIndex((x) => x.text === text);
@@ -1580,8 +1681,6 @@ function buildPomodoroView(): ViewHost {
     el,
     sync() {
       const t = State.timer;
-      // The stopwatch owns the machine while that view is up.
-      if (t.mode === "stopwatch") State.timerSetMode("focus");
       rollDigits(roll, `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`);
       segFocus.classList.toggle("on", t.mode === "focus");
       segBreak.classList.toggle("on", t.mode === "break");
@@ -1622,7 +1721,6 @@ function buildStopwatchView(): ViewHost {
     el,
     sync() {
       const t = State.timer;
-      if (t.mode !== "stopwatch") State.timerSetMode("stopwatch");
       display.textContent = `${pad2(t.remaining / 3600)}:${pad2((t.remaining % 3600) / 60)}:${pad2(t.remaining % 60)}`;
       startLabel.textContent = t.running ? "Pause" : "Start";
     },
@@ -1644,9 +1742,9 @@ function buildWeatherView(): ViewHost {
       full.style.display = has ? "" : "none";
       empty.style.display = has ? "none" : "";
       if (has) {
-        temp.textContent = `${w.temp}°`;
-        cond.textContent = w.condition;
-        details.replaceChildren(`Humidity: ${w.humidity}%`, h("br"), `Wind: ${w.wind} km/h`);
+        temp.textContent = `${safeText(w.temp)}°`;
+        cond.textContent = safeText(w.condition);
+        details.replaceChildren(`Humidity: ${safeText(w.humidity)}%`, h("br"), `Wind: ${safeText(w.wind)} km/h`);
       } else {
         empty.textContent = w.condition ? "Weather unavailable" : "Loading…";
       }
@@ -1716,7 +1814,7 @@ export function buildCompactStatus(): ViewHost {
       timer.textContent = `${pad2(t.remaining / 60)}:${pad2(t.remaining % 60)}`;
       const m = State.media;
       media.style.display = m?.playing ? "" : "none";
-      media.textContent = m?.playing ? `♪ ${m.track}` : "";
+      media.textContent = m?.playing ? `♪ ${safeText(m.track)}` : "";
       // The compact strip is the narrowest slot: the glyph alone carries the
       // state — tier colour + fill, the number stays in the tooltip.
       const b = State.battery;
