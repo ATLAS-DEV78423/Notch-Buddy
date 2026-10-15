@@ -1,11 +1,16 @@
 {
   "name": "coucou-windows",
   "private": true,
-  "version": "0.3.5",
+  "version": "0.3.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test:carousel": "node --experimental-strip-types scripts/test-agent-carousel.mjs",
+    "test:navigation": "node scripts/test-navigation.mjs",
+    "test:bluetooth": "node --experimental-strip-types src/core/bluetooth.test.mjs",
+    "test:performance": "node scripts/test-performance.mjs",
+    "test:backend": "python3 scripts/test-backend-poll-log.py",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
     "tauri": "tauri",

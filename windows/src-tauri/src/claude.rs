@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::secrets;
+use crate::files;
+use crate::files::MAX_ATTACHMENT_BYTES;
 
 const ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -20,6 +22,9 @@ const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const MAX_TOKENS: u32 = 4096;
 /// Text and code files are inlined; anything larger is skipped, as on macOS.
 const MAX_INLINE_TEXT: u64 = 200_000;
+const MAX_HISTORY_MESSAGES: usize = 40;
+const MAX_HISTORY_BYTES: usize = 1_000_000;
+const MAX_QUERY_BYTES: usize = 100_000;
 
 pub const DEFAULT_MODEL: &str = "claude-opus-5";
 
@@ -45,12 +50,16 @@ impl Chat {
     }
 
     fn push(&self, provider: &str, message: Value) {
-        self.messages
+        let mut all = self.messages
             .lock()
-            .unwrap()
+            .unwrap();
+        let messages = all
             .entry(provider.to_string())
-            .or_default()
-            .push(message);
+            .or_default();
+        messages.push(message);
+        while messages.len() > MAX_HISTORY_MESSAGES || history_bytes(messages) > MAX_HISTORY_BYTES {
+            messages.remove(0);
+        }
     }
 
     fn pop(&self, provider: &str) {
@@ -92,6 +101,15 @@ pub async fn send(
     query: String,
     context: Option<ChatContext>,
 ) -> Result<ChatReply, String> {
+    validate_query(&query, context.as_ref())?;
+    if let Some(ChatContext::File { path, .. }) = &context {
+        if !files::validate_inbox_file(path) {
+            return Err("The attached file is no longer available.".into());
+        }
+        if let Some(error) = attachment_size_error(path) {
+            return Err(error);
+        }
+    }
     if let Some(base) = provider_base(provider) {
         return send_openai(chat, provider, base, model, query, context).await;
     }
@@ -103,8 +121,7 @@ pub async fn send(
 
     // File / window context rides along with the first message only, exactly
     // like ClaudeService.chat().
-    if chat.is_empty(provider) {
-        match &context {
+    match &context {
             Some(ChatContext::File { name, path }) => {
                 if let Some(block) = file_block(path) {
                     content.push(block);
@@ -119,7 +136,6 @@ pub async fn send(
                 content.push(json!({ "type": "text", "text": text }));
             }
             None => {}
-        }
     }
     content.push(json!({ "type": "text", "text": query }));
 
@@ -212,8 +228,7 @@ async fn send_openai(
 
     // File / window context rides along with the first message only, like send().
     let mut parts: Vec<Value> = Vec::new();
-    if chat.is_empty(provider) {
-        match &context {
+    match &context {
             Some(ChatContext::File { name, path }) => {
                 parts.extend(file_parts(name, path));
             }
@@ -225,7 +240,6 @@ async fn send_openai(
                 parts.push(json!({ "type": "text", "text": text }));
             }
             None => {}
-        }
     }
 
     // No context: a plain string, exactly what the brief specifies.
@@ -274,12 +288,7 @@ async fn send_openai(
 }
 
 async fn call_openai(provider: &str, url: &str, key: &str, body: &Value) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = http_client()
         .post(url)
         .header("authorization", format!("Bearer {key}"))
         .header("content-type", "application/json")
@@ -307,12 +316,7 @@ async fn call_openai(provider: &str, url: &str, key: &str, body: &Value) -> Resu
 }
 
 async fn call(key: &str, body: &Value) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = http_client()
         .post(ENDPOINT)
         .header("x-api-key", key)
         .header("anthropic-version", ANTHROPIC_VERSION)
@@ -360,7 +364,7 @@ fn file_block(path: &str) -> Option<Value> {
     };
 
     if let Some((block_type, media)) = media_type {
-        let bytes = std::fs::read(path).ok()?;
+        let bytes = read_bounded(path).ok()?;
         return Some(json!({
             "type": block_type,
             "source": { "type": "base64", "media_type": media, "data": base64(&bytes) },
@@ -402,7 +406,7 @@ fn file_part(path: &str) -> Option<Value> {
     };
 
     if let Some(media) = media {
-        let bytes = std::fs::read(path).ok()?;
+        let bytes = read_bounded(path).ok()?;
         let url = format!("data:{media};base64,{}", base64(&bytes));
         return Some(json!({ "type": "image_url", "image_url": { "url": url } }));
     }
@@ -440,7 +444,8 @@ fn base64(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{base64, file_parts, file_part, provider_base};
+    use super::{base64, file_parts, file_part, provider_base, Chat, MAX_ATTACHMENT_BYTES,
+                MAX_HISTORY_MESSAGES, attachment_size_error};
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -488,4 +493,89 @@ mod tests {
         assert_eq!(provider_base("openrouter"), Some("https://openrouter.ai/api/v1"));
         assert_eq!(provider_base("opencode"), Some("https://opencode.ai/zen/v1"));
     }
+
+    #[test]
+    fn binary_attachments_are_rejected_before_reading_too_much() {
+        let path = std::env::temp_dir().join(format!("coucou-large-{}.pdf", std::process::id()));
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_ATTACHMENT_BYTES + 1).unwrap();
+
+        let error = attachment_size_error(path.to_str().unwrap()).expect("oversized PDF");
+        assert!(error.contains("too large"), "{error}");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn chat_history_is_bounded_per_provider() {
+        let chat = Chat::default();
+        for i in 0..(MAX_HISTORY_MESSAGES + 10) {
+            chat.push("one", json!({"role":"user", "content": format!("{i}")}));
+        }
+        for i in 0..3 {
+            chat.push("two", json!({"role":"user", "content": format!("{i}")}));
+        }
+        assert!(chat.snapshot("one").len() <= MAX_HISTORY_MESSAGES);
+        assert_eq!(chat.snapshot("two").len(), 3);
+    }
+}
+
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .build()
+            .unwrap_or_default()
+    });
+    &CLIENT
+}
+
+fn history_bytes(messages: &[Value]) -> usize {
+    messages
+        .iter()
+        .map(|message| serde_json::to_vec(message).map_or(0, |bytes| bytes.len()))
+        .sum()
+}
+
+fn validate_query(query: &str, context: Option<&ChatContext>) -> Result<(), String> {
+    if query.len() > MAX_QUERY_BYTES {
+        return Err(format!("Message is too large (maximum {MAX_QUERY_BYTES} bytes)."));
+    }
+    if let Some(ChatContext::File { name, path }) = context {
+        if name.len() + path.len() > MAX_QUERY_BYTES {
+            return Err(format!("File context is too large (maximum {MAX_QUERY_BYTES} bytes)."));
+        }
+    }
+    if let Some(ChatContext::Window { app_name, title, url }) = context {
+        let total = app_name.len() + title.len() + url.as_deref().map_or(0, str::len);
+        if total > MAX_QUERY_BYTES {
+            return Err(format!("Window context is too large (maximum {MAX_QUERY_BYTES} bytes)."));
+        }
+    }
+    Ok(())
+}
+
+fn attachment_size_error(path: &str) -> Option<String> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let binary = matches!(ext.as_str(), "pdf" | "jpg" | "jpeg" | "png" | "gif" | "webp");
+    let len = std::fs::metadata(path).ok()?.len();
+    (binary && len > MAX_ATTACHMENT_BYTES)
+        .then(|| format!("Attachment is too large (maximum {MAX_ATTACHMENT_BYTES} bytes)."))
+}
+
+fn read_bounded(path: &str) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_ATTACHMENT_BYTES {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "attachment too large"));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_ATTACHMENT_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_ATTACHMENT_BYTES {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "attachment too large"));
+    }
+    Ok(bytes)
 }

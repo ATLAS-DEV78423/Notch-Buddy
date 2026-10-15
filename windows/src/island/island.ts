@@ -95,6 +95,7 @@ export class Island {
   private peekGen = 0;
   /** Previous timer running flag, to peek on pomodoro completion. */
   private prevTimerRunning = false;
+  private dropGeneration = 0;
 
   // Bot hover → love (IslandWindowController.botHoverIn)
   private botHovering = false;
@@ -129,10 +130,10 @@ export class Island {
       // Event-peek: a pomodoro countdown that just reached zero (natural finish
       // only — reset/stop leave `remaining` non-zero, stopwatch never hits 0).
       const t = State.timer;
-      if (this.prevTimerRunning && !t.running && t.remaining === 0 && t.mode !== "stopwatch") {
-        this.peek(4000);
-      }
+      const finished = this.prevTimerRunning && !t.running && t.remaining === 0 && t.mode !== "stopwatch";
+      // Reveal notifies synchronously; record the edge before entering it.
       this.prevTimerRunning = t.running;
+      if (finished) this.peek(4000);
     });
   }
 
@@ -142,9 +143,13 @@ export class Island {
     const actions: ViewActions = {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
+      setAgentExpanded: (expanded) => {
+        State.setAgentExpanded(expanded);
+        Sound.play("blip");
+        this.animateGeometry();
+      },
       setFocus: (id) => {
         State.setFocus(id);
-        Sound.play("blip");
       },
       openTerminal: () => {
         const cwd = State.focusTask?.sessionCwd ?? null;
@@ -312,6 +317,7 @@ export class Island {
       void Bridge.focusWindow(false);
     }
     if (mode !== "expanded") {
+      if (UploadSeq.isActive) this.dropGeneration++;
       this.engine.resetMorph();
       // Nothing can be seen of the sequence once the island is shut, and leaving
       // it running would keep the frame loop awake — the island must cost
@@ -330,7 +336,10 @@ export class Island {
 
   /** Navigating out of the drop flow ends the sequence, as on macOS. */
   private stopSequenceIfLeaving(view: IslandViewName) {
-    if (UploadSeq.isActive && !UPLOAD_VIEWS.has(view)) UploadSeq.deactivate();
+    if (UploadSeq.isActive && !UPLOAD_VIEWS.has(view)) {
+      this.dropGeneration++;
+      UploadSeq.deactivate();
+    }
   }
 
   expand(view: IslandViewName) {
@@ -359,6 +368,7 @@ export class Island {
   }
 
   collapse() {
+    State.setAgentExpanded(false);
     State.isPinned = false;
     this.fsm.pinned = false;
     // Drive the state machine rather than the mode: setting the mode behind its
@@ -440,13 +450,14 @@ export class Island {
       }
       case "drop": {
         State.fileDragOver = false;
-        const path = e.paths?.[0];
-        if (!path) {
+        const paths = (e.paths ?? []).filter(Boolean);
+        if (paths.length === 0) {
+          this.dropGeneration++;
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
           return;
         }
-        this.swallow(path);
+        this.swallow(paths);
         break;
       }
     }
@@ -457,10 +468,14 @@ export class Island {
    * the inbox runs in the background and swaps the path in when it lands, so a
    * slow disk can never stall the animation — same as FileDropHandler on macOS.
    */
-  private swallow(path: string) {
+  private swallow(paths: string[]) {
+    const path = paths[0];
     const name = path.split(/[\\/]/).pop() || "file";
-    State.droppedFile = { name, path };
-    State.promptContext = { kind: "file", name, path };
+    const generation = ++this.dropGeneration;
+    State.droppedFile = null;
+    State.promptContext = null;
+    State.uploadingName = name;
+    State.shelfOpen = false;
     State.chatHistory = [];
     void Bridge.chatReset();
 
@@ -477,16 +492,52 @@ export class Island {
     this.setView("uploading");
     this.ensureRunning();
 
-    void Bridge.ingestFile(path)
-      .then((file) => {
-        State.droppedFile = { name: file.name, path: file.path };
-        State.promptContext = { kind: "file", name: file.name, path: file.path };
-        State.notify();
+    void (async () => {
+      const results: PromiseSettledResult<Awaited<ReturnType<typeof Bridge.ingestFile>>>[] = [];
+      for (const sourcePath of paths) {
+        try {
+          results.push({ status: "fulfilled", value: await Bridge.ingestFile(sourcePath) });
+        } catch (reason) {
+          results.push({ status: "rejected", reason });
+        }
+      }
+      return results;
+    })()
+      .then((results) => {
+        let firstSuccess: { name: string; path: string } | null = null;
+        let firstError: string | null = null;
+        for (const [index, result] of results.entries()) {
+          if (generation !== this.dropGeneration) return;
+          const sourcePath = paths[index];
+          if (result.status === "fulfilled") {
+            const item = State.addShelfItem(result.value);
+            if (!firstSuccess && generation === this.dropGeneration) {
+              State.selectShelfItem(item.id);
+              firstSuccess = { name: item.name, path: item.path };
+            }
+          } else {
+            const message = String(result.reason).replace(/^Error:\s*/, "");
+            State.addShelfError(sourcePath.split(/[\\/]/).pop() || "file", sourcePath, message);
+            firstError ??= message;
+          }
+        }
+        if (firstSuccess && generation === this.dropGeneration) {
+          State.droppedFile = firstSuccess;
+          State.promptContext = { kind: "file", name: firstSuccess.name, path: firstSuccess.path };
+          State.uploadingName = null;
+          if (firstError) State.showBanner(`Some files could not be added: ${firstError}`);
+          State.notify();
+          return;
+        }
+        if (generation !== this.dropGeneration || firstSuccess) return;
+        throw new Error(firstError ?? "No dropped files could be copied.");
       })
       .catch((err) => {
+        if (generation !== this.dropGeneration) return;
         UploadSeq.deactivate();
         State.droppedFile = null;
         State.promptContext = null;
+        State.uploadingName = null;
         State.notify();
         State.noteMessage = String(err).replace(/^Error:\s*/, "");
         this.engine.animateMorph(0);
@@ -518,7 +569,7 @@ export class Island {
       this.engine.triggerEmote("happy");
     }
     // The extra second is the grow-back, after which the choose card is up.
-    if (since >= PRE_PROGRESS + dur + 1 && State.view === "uploading") {
+    if (since >= PRE_PROGRESS + dur + 1 && State.view === "uploading" && State.droppedFile) {
       this.setView("choose");
     }
   }
@@ -526,7 +577,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    const { w, h } = islandSize(State.mode, State.view, State.chatHistory.length);
+    const { w, h } = islandSize(State.mode, State.view, State.chatHistory.length, State.agentExpanded);
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };
   }
@@ -553,7 +604,8 @@ export class Island {
     this.shell.h.set(t.h, snap);
     this.shell.y.set(t.y, snap);
     this.shell.r.set(t.r, snap);
-    this.ensureRunning();
+    if (snap) this.applyGeometry();
+    this.ensureRunning(State.mode === "hidden");
   }
 
   private applyGeometry() {
@@ -665,7 +717,22 @@ export class Island {
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && State.mode === "expanded" && !State.isPinned) this.collapse();
+      const target = e.target;
+      const typing = target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      if (e.key === "Escape" && State.mode === "expanded" && State.view === "upload" && State.shelfOpen && !typing) {
+        e.preventDefault();
+        State.shelfOpen = false;
+        State.notify();
+        window.setTimeout(() => document.querySelector<HTMLElement>("#header .tab[aria-label='Drop']")?.focus(), 0);
+      } else if (e.key === "Escape" && State.mode === "expanded" &&
+          State.view === "overview" && State.agentExpanded && !typing) {
+        e.preventDefault();
+        State.setAgentExpanded(false);
+        this.animateGeometry();
+      } else if (e.key === "Escape" && State.mode === "expanded" && !State.isPinned) {
+        this.collapse();
+      }
       State.lastActivity = performance.now();
     });
 
@@ -808,8 +875,9 @@ export class Island {
 
   // ── Frame loop ──────────────────────────────────────────────────────────────
 
-  ensureRunning() {
+  ensureRunning(clearHidden = false) {
     if (this.running) return;
+    if (!clearHidden && State.mode === "hidden" && !this.shellMoving) return;
     this.running = true;
     this.lastFrame = performance.now();
     requestAnimationFrame(this.frame);
@@ -829,6 +897,26 @@ export class Island {
       this.shell.y.step(dtMs);
       this.shell.r.step(dtMs);
       this.applyGeometry();
+    }
+
+    // A hide transition clears the visible surfaces once. Routine hidden state
+    // changes stay dirty until reveal, and never tick engines or page canvases.
+    if (State.mode === "hidden") {
+      this.botCanvas.style.opacity = "0";
+      this.botGlow.style.display = "none";
+      this.glowKey = "";
+      this.miniGrid.style.opacity = "0";
+      this.countdown.style.width = "0px";
+      this.bgCanvas.style.display = "none";
+      this.greetingCanvas.style.display = "none";
+      this.contentEl.style.opacity = "0";
+      this.contentEl.style.pointerEvents = "none";
+      this.uploadCanvas.el.classList.remove("on");
+      this.viewsEl.classList.remove("hidden-by-upload");
+      this.running = this.shellMoving;
+      if (this.running) requestAnimationFrame(this.frame);
+      else Sound.idle();
+      return;
     }
 
     if (this.dirty) {
@@ -864,27 +952,17 @@ export class Island {
     this.uploadCanvas.el.classList.toggle("on", uploadActive);
     this.viewsEl.classList.toggle("hidden-by-upload", uploadActive);
 
-    tickMiniBots(dt);
-    this.views.get(State.view)?.tick?.(nowMs);
-    if (UploadSeq.isActive) this.stepSequence();
+    const miniRoot = State.mode === "compact" ? this.miniGrid
+      : uploadActive ? null : this.views.get(State.view)?.el ?? null;
+    const miniBusy = tickMiniBots(dt, miniRoot);
+    if (State.mode === "expanded" && !uploadActive) this.views.get(State.view)?.tick?.(nowMs);
+    if (uploadActive) this.stepSequence();
     this.updateCountdown(nowMs);
 
-    // Nothing is drawn while the island is hidden, so nothing may keep the loop
-    // alive either. This used to read `... || this.engine.busy || State.mode !==
-    // "hidden"`, and engine.busy is permanently true for any state with a
-    // looping animation — breathing, ratelimit sweat, sleeping z's, the search
-    // sweep — so a hidden island went on burning frames in exactly the states it
-    // spends most of its life in. Geometry still has to finish retracting.
-    const settling = this.shellMoving;
-    // An active effect keeps the loop alive while the island is visible; the
-    // hidden branch stays exactly as before, so a hidden island still costs
-    // nothing beyond geometry settling.
-    const busy = State.mode === "hidden"
-      ? settling
-      : settling ||
-        !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
-        greetingActive || this.engine.busy || UploadSeq.isActive ||
-        backgroundEffect() !== "off";
+    const busy = this.shellMoving ||
+      !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
+      greetingActive || this.engine.busy || miniBusy || uploadActive ||
+      backgroundEffect() !== "off";
 
     if (busy) {
       requestAnimationFrame(this.frame);
@@ -922,7 +1000,7 @@ export class Island {
   private glowKey = "";
 
   private updateBotTargets() {
-    const p = botPosition(State.mode, State.view, this.shell.h.value, State.uploadProgress);
+    const p = botPosition(State.mode, State.view, this.shell.h.value, State.uploadProgress, State.agentExpanded);
     this.botCx.target = p.cx;
     this.botCy.target = p.cy;
     this.botSize.target = p.diameter / 0.6;

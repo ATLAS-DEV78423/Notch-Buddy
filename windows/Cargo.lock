@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "coucou"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "gtk",
  "indexmap 1.9.3",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "coucou-hook"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "libc",
  "serde_json",

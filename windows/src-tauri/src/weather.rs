@@ -52,9 +52,11 @@ struct WttrRoot {
 /// logged and the last reading stays on screen. Unparsable fields fall back
 /// rather than failing the whole reading.
 fn fetch() -> Option<WeatherData> {
-    let client = reqwest::Client::builder().timeout(TIMEOUT).build().ok()?;
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder().timeout(TIMEOUT).build().unwrap_or_default()
+    });
     let body: WttrRoot = tauri::async_runtime::block_on(async {
-        client
+        CLIENT
             .get("https://wttr.in/?format=j1")
             .send()
             .await?
@@ -88,11 +90,13 @@ pub fn setup_weather(app: &AppHandle, gate: Arc<PollGate>) {
         // view is not stuck on "Loading…" forever.
         let mut announced = false;
         loop {
-            gate.wait_until_active();
-            while gate.is_active() {
+            let generation = gate.wait_until_active();
+            while gate.is_current(generation) {
                 // Tray → Pause stops the network call, like the integration pollers.
                 if !crate::integrations::PAUSED.load(std::sync::atomic::Ordering::Relaxed) {
-                    match fetch() {
+                    let data = fetch();
+                    if !gate.is_current(generation) { break; }
+                    match data {
                         Some(data) => {
                             announced = true;
                             let _ = app.emit_to(WINDOW_LABEL, "weather-update", &data);
@@ -113,14 +117,7 @@ pub fn setup_weather(app: &AppHandle, gate: Arc<PollGate>) {
                         None => {}
                     }
                 }
-                // Sleep in short steps: hiding the island parks the loop right
-                // away instead of waiting out the whole 30 minutes.
-                for _ in 0..(INTERVAL.as_secs() / 30) {
-                    if !gate.is_active() {
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_secs(30));
-                }
+                if !gate.wait_interval(generation, INTERVAL) { break; }
             }
         }
     });

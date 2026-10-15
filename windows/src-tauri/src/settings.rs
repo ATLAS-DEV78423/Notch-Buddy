@@ -3,7 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,12 +67,17 @@ fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }
 
-pub fn load() -> Settings {
-    match std::fs::read(settings_path()) {
+pub fn load() -> Result<Settings, String> {
+    load_from(&settings_path())
+}
+
+fn load_from(path: &std::path::Path) -> Result<Settings, String> {
+    match std::fs::read(path) {
         Ok(bytes) => serde_json::from_slice::<Settings>(&bytes)
             .map(migrate)
-            .unwrap_or_default(),
-        Err(_) => Settings::default(),
+            .map_err(|err| format!("Can't parse {}: {err}; the file was left unchanged", path.display())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
+        Err(err) => Err(format!("Can't read {}: {err}; the file was left unchanged", path.display())),
     }
 }
 
@@ -98,7 +105,95 @@ fn migrate(mut settings: Settings) -> Settings {
 pub fn save(settings: &Settings) -> std::io::Result<()> {
     let dir = config_dir();
     crate::platform::ensure_private_dir(&dir)?;
+    save_at(&settings_path(), settings)
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn save_at(path: &std::path::Path, settings: &Settings) -> std::io::Result<()> {
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    std::fs::write(settings_path(), json)
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let suffix = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let temp = path.with_file_name(format!(".{}.tmp-{}-{suffix}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
+    let result = (|| -> std::io::Result<()> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&temp)?;
+        file.write_all(&json)?;
+        file.sync_all()?;
+        drop(file);
+        replace_atomically(&temp, path)?;
+        sync_parent(parent)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
+pub(crate) fn replace_atomically(temp: &std::path::Path, path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(not(windows))]
+    {
+        std::fs::rename(temp, path)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn MoveFileExW(existing: *const u16, replacement: *const u16, flags: u32) -> i32;
+        }
+        const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+        const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+        let source: Vec<u16> = temp.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let target: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let ok = unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) };
+        if ok == 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) }
+    }
+}
+
+fn sync_parent(parent: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(parent)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = parent;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_settings_are_reported_and_left_in_place() {
+        let path = std::env::temp_dir().join(format!("coucou-settings-test-{}", std::process::id()));
+        let original = br#"{ not json"#;
+        std::fs::write(&path, original).unwrap();
+
+        let error = load_from(&path).unwrap_err();
+        assert!(error.contains("Can't parse"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn settings_write_is_atomic_and_durable() {
+        let dir = std::env::temp_dir().join(format!("coucou-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        let settings = Settings::default();
+
+        save_at(&path, &settings).unwrap();
+        let loaded: Settings = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(loaded.model, settings.model);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

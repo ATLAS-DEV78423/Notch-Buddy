@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.6 — October 15, 2026
+
+**Notch-Buddy for Windows 0.3.6** (`windows-v0.3.6`).
+
+This release hardens the Windows/Linux app and makes Bluetooth behavior honest and stable.
+
+- **Safer persistence and concurrency** — settings writes are atomic and durable; hook,
+  OpenCode and Hermes updates are serialized, fingerprint-checked and collision-safe; dropped
+  files never overwrite an existing inbox item; pending approvals, chat history, attachments and
+  diagnostics are bounded.
+- **Authenticated iPhone relay** — Live Activity relay requests now use a per-install Keychain
+  secret with HMAC signatures, timestamps, nonces, replay protection, strict payload validation
+  and rate limits. The relay has focused security and APNs mapping tests.
+- **Bluetooth identity and capability fixes** — rows and commands use stable Windows device IDs,
+  duplicate names are safe, stale responses are ignored, and unsupported mice/keyboards/phones
+  clearly show that Windows manages their connection. The PowerShell worker now survives an empty
+  WinRT device result instead of crashing.
+- **Upload and UI reliability** — the upload timeline waits for successful ingestion before
+  showing the choice card; accessibility regression coverage and the cross-platform backend test
+  harness are more reliable on Windows.
+
 ## 0.3.5 — October 11, 2026
 
 **Notch-Buddy for Windows 0.3.5** (`windows-v0.3.5`).

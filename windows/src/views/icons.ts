@@ -57,4 +57,20 @@ export const ICONS = {
   // sun.max.fill — the Night light glyph (a warm sun with eight rays).
   sunMax:
     "M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6zM11 2h2v3.1h-2V2zm0 16.9h2V22h-2v-3.1zM2 11h3.1v2H2v-2zm16.9 0H22v2h-3.1v-2zM4.93 3.51l1.42 1.42 2.2-2.2-1.42-1.42-2.2 2.2zm12.72 1.42 1.42-1.42 2.2 2.2-1.42 1.42-2.2-2.2zM19.07 17.65l-1.41-1.42-2.2 2.2 1.41 1.41 2.2-2.19zM6.35 19.07l-1.42-1.41-2.2 2.2 1.42 1.41 2.2-2.2z",
+  // person.fill — the agent navigation glyph.
+  agent: "M12 3.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6zM4.2 21a7.8 7.8 0 0 1 15.6 0H4.2z",
+  // slider.horizontal.3 — compact filter controls.
+  sliders: "M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2zM7 3h3v6H7V3zm7 6h3v6h-3V9zm-7 6h3v6H7v-6z",
+  // bluetooth — filled Bluetooth mark.
+  bluetooth: "M17.71 7.71 12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71L13.41 12l4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z",
+  // chart.bar.fill — simple activity bars.
+  chart: "M4 19h3V9H4v10zm6 0h4V5h-4v14zm7 0h3v-7h-3v7z",
+  // stopwatch.fill — timer navigation glyph.
+  stopwatch: "M9 2h6v2.1a8.4 8.4 0 1 1-6 0V2zm2 1.8v1.7h2V3.8h-2zm1 3.4a6.4 6.4 0 1 0 0 12.8 6.4 6.4 0 0 0 0-12.8zm-.9 2.1h1.8v3.3l2.2 1.3-.9 1.5-3.1-1.9v-4.2zM18.5 5.1l1.4-1.4 1.4 1.4-1.4 1.4-1.4-1.4z",
+  // cloud.sun.fill — weather navigation glyph.
+  cloudSun: "M7.2 19.5a4.7 4.7 0 1 1 1.1-9.3 5.8 5.8 0 0 1 10.9 2.3A3.6 3.6 0 1 1 18 19.5H7.2zM6.8 8.8a3.2 3.2 0 1 1 4.8-3.7 4.9 4.9 0 0 0-3.8 3.6l-1 .1zM6.8 2.2h1.6v1.6H6.8V2.2zm-3 1.2 1.1-1.1L6 3.4 4.9 4.5 3.8 3.4zm-1.2 3h1.6V8H2.6V6.4z",
+  // square.grid.3x3.fill — navigation grid glyph.
+  navGrid: "M3 3h5v5H3V3zm6.5 0h5v5h-5V3zm6.5 0h5v5h-5V3zM3 9.5h5v5H3v-5zm6.5 0h5v5h-5v-5zm6.5 0h5v5h-5v-5zM3 16h5v5H3v-5zm6.5 0h5v5h-5v-5zm6.5 0h5v5h-5v-5z",
+  // music.note — media navigation glyph.
+  music: "M9 4.5 19 2v12.3a3.8 3.8 0 1 1-2-3.4V6.2l-6 1.5v9.6a3.8 3.8 0 1 1-2-3.4V4.5z",
 } as const;

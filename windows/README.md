@@ -21,8 +21,8 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 ## Install
 
-Grab `Coucou-Windows-0.2.0-setup.exe` (or the `.msi`) from
-[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.2.0)
+Grab `Coucou-Windows-0.3.6-setup.exe` (or the `.msi`) from
+[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.3.6)
 and run it — current-user install, no admin prompt. The installer is not
 code-signed yet, so SmartScreen warns: click **More info → Run anyway**.
 Microsoft Defender may also flag it (`Trojan:Win32/Wacatac.H!ml`, a known false
@@ -51,27 +51,37 @@ Everything else happens on its own: a Claude Code permission request opens the
 island with **Deny / Allow**, a finished session shows what it did, and
 your integrations sit in the coloured pills next to Pip.
 
-## New in 0.2.0
+## New in 0.3.6
 
-The island is now a set of tab groups — **Home, Agents, Media, System, Tools** — with a
-dashboard of live widgets as the default view. Sessions, approvals, chat and file drop
-are unchanged, one tab over.
+This release hardens persistence, relay security and Bluetooth behavior while keeping the
+tabbed island — **Home, Agents, Media, System, Tools** — and dashboard of live widgets.
+
+| Reliability and safety | What changed |
+|---|---|
+| Persistence | Settings are atomic and durable; hook/OpenCode/Hermes writes are serialized, fingerprint-checked and collision-safe; dropped files never overwrite existing items |
+| Resource bounds | Chat history, attachments, diagnostics and pending approvals have explicit limits; HTTP clients are reused |
+| iPhone relay | Per-install HMAC authentication, timestamp/nonce replay protection, strict payload validation and rate limits |
+| Bluetooth | Stable device IDs, stale-response filtering, duplicate-name safety, and honest “Windows manages” handling for unsupported devices |
+| Uploads and accessibility | The choice card waits for successful ingestion; the regression suite covers semantic controls and the upload path |
+
+The existing tabs remain available:
 
 | Where | What |
 |---|---|
 | Media tab | what's playing (any app with Windows media controls), play/pause/next/previous/seek, album art |
-| System tab | CPU, memory and network live; volume, brightness, night light, Do Not Disturb and a memory boost; Bluetooth devices you can connect |
+| System tab | CPU, memory and network live; volume, brightness, night light, Do Not Disturb and a memory boost; Bluetooth status, with connect/disconnect for supported audio devices |
 | Tools tab | pomodoro (25/5, with a notification when a block ends) and a stopwatch |
 | Dashboard (Home) | system stats, battery, weather and your running timers at a glance |
 | Anywhere | copy a URL and a banner offers to open it; a banner warns when the battery is low or full |
 | Settings… | nine animated island backgrounds and an accent colour |
 | Compact mode | a mini status strip — media, timer, battery — while the island is collapsed |
 
-Weather comes from wttr.in (no key, no account), fetched about every 30 minutes and only
-while the island is open. Pip reacts to what's going on: agent activity, battery, timers
-and media all give him something to say.
+Weather comes from wttr.in (no key, no account), fetched about every 30 minutes while the
+island is active. Pip reacts to what's going on: agent activity, battery, timers and media
+all give him something to say. Integration pollers run on their configured cadence and stop
+when the app is paused.
 
-Everything polls only while the island is visible: hidden, the app sits at 0 % CPU.
+The island parks its cursor and weather work when collapsed; Pause stops network polling.
 
 ## Claude Code
 
@@ -98,7 +108,7 @@ only ask whether a key exists. Same for every integration key.
 
 No telemetry. The only network requests Notch-Buddy makes are to the services you
 configure yourself — plus wttr.in for the optional weather widget (no key, no account,
-about every 30 minutes, only while the island is open).
+about every 30 minutes while the island is active).
 
 ## Build it yourself
 
@@ -172,7 +182,7 @@ The relay (`coucou-hook.exe`) works with any tool that can run a command on hook
 | Codex | `--agent codex` positional arg | `%USERPROFILE%\.codex\hooks.json` |
 | Copilot CLI | `--agent copilot` positional arg + camelCase events | `%USERPROFILE%\.copilot\hooks\coucou.json` |
 | Muse Code | `--agent muse` positional arg | `%USERPROFILE%\.config\muse\settings.json` |
-| Hermes | **Settings → Hermes → Install hooks** | `%USERPROFILE%\.hermes\config.yaml` |
+| Hermes | **Settings → Hermes → Install hooks** | `%LOCALAPPDATA%\hermes\config.yaml` on Windows; `~/.hermes/config.yaml` on Linux |
 | OpenCode | **Settings → OpenCode Plugin → Install** | `%USERPROFILE%\.config\opencode\plugins\coucou.js` |
 | Any other | `--agent <name>` positional arg | your tool's hook config |
 

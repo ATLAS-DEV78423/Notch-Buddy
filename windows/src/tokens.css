@@ -1,20 +1,27 @@
 :root {
   color-scheme: dark;
 
-  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", sans-serif;
+  --font: "Segoe UI Variable Text", "Segoe UI Variable", system-ui, "Segoe UI", "Segoe UI Emoji", sans-serif;
   --mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
-  --ink: #f5f6f8;        /* primary text */
-  --ink-2: #f1f2f4;
-  --dim: #9398a1;
-  --dim-2: #8e939c;
-  --dim-3: #6b7079;
-  --dim-4: #5f646d;
-  --dim-5: #4b5563;
-  --card: #141518;
-  --card-flat: #0e0f11;
-  --tab-on: #1d1f23;
-  --hairline: rgba(255, 255, 255, 0.035);
+  --ink: #f5f7fb;        /* primary text */
+  --ink-2: #e8ebf0;
+  --dim: #a0a7b3;
+  --dim-2: #858d9a;
+  --dim-3: #69727f;
+  --dim-4: #56606d;
+  --dim-5: #404a57;
+  --bg: #0a0c0f;
+  --card: #171a1f;
+  --card-flat: #101318;
+  --card-raised: #1c2026;
+  --tab-on: #242a32;
+  --hairline: rgba(255, 255, 255, 0.075);
+  --highlight: rgba(255, 255, 255, 0.075);
+  --shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --pip-safe-inset: 60px;
   --red: #f4505e;
   --red-text: #ff8d97;
   --green: #22c55e;
@@ -25,6 +32,6 @@
   --cyan: #22d3ee;
   --indigo: #6366f1;
   --pink: #f472b6;
-  --accent: #3b9eff;     /* single source for the accent colour (settings picker) */
-  --accent-soft: rgba(59, 158, 255, 0.18);  /* the accent as a wash (.cc-toggle.on) */
+  --accent: #4da3ff;     /* single source for the accent colour (settings picker) */
+  --accent-soft: rgba(77, 163, 255, 0.18);  /* the accent as a wash (.cc-toggle.on) */
 }

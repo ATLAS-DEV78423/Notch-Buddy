@@ -48,10 +48,15 @@ class Engine implements Spring {
 
   step(dtMs: number): number {
     if (this.done) return this.value;
-    const dtSec = Math.min(dtMs, 32) / 1000;
-    const acc = (-this.k * (this.value - this.target) - this.c * this.v) / this.m;
-    this.v += acc * dtSec;
-    this.value += this.v * dtSec;
+    // Match the bot spring's substeps so refresh rate does not change the shell.
+    const dtSec = Math.max(0, Math.min(dtMs, 50)) / 1000;
+    const steps = Math.max(1, Math.ceil(dtSec * 240));
+    const h = dtSec / steps;
+    for (let i = 0; i < steps; i++) {
+      const acc = (-this.k * (this.value - this.target) - this.c * this.v) / this.m;
+      this.v += acc * h;
+      this.value += this.v * h;
+    }
     if (Math.abs(this.v) < this.rd && Math.abs(this.value - this.target) < this.rd) {
       this.value = this.target;
       this.v = 0;

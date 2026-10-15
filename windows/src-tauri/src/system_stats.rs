@@ -122,7 +122,7 @@ mod imp {
     }
 
     /// Parks on the shared gate: no polling, no emits while the island is
-    /// hidden. Waking takes a fresh baseline (line `prev = read()`), so the
+    /// hidden. Waking takes a fresh baseline, so the
     /// first tick after a park is a clean two-second window. A failed read
     /// skips the tick without touching `prev`; a failure at wake-up retries
     /// after one interval instead of spinning.
@@ -130,18 +130,16 @@ mod imp {
         let app = app.clone();
         std::thread::spawn(move || {
             loop {
-                gate.wait_until_active();
-                let Some(mut prev) = read() else {
-                    std::thread::sleep(Duration::from_secs(2));
-                    continue;
-                };
-                while gate.is_active() {
-                    std::thread::sleep(Duration::from_secs(2));
+                let generation = gate.wait_until_active();
+                if !gate.is_current(generation) { continue; }
+                let mut prev = read();
+                while gate.wait_interval(generation, Duration::from_secs(2)) {
                     let Some(now) = read() else { continue };
-                    if let Some(stats) = stats_between(&prev, &now) {
+                    if !gate.is_current(generation) { break; }
+                    if let Some(stats) = prev.as_ref().and_then(|prev| stats_between(prev, &now)) {
                         let _ = app.emit_to(WINDOW_LABEL, "system-stats", &stats);
                     }
-                    prev = now;
+                    prev = Some(now);
                 }
             }
         });

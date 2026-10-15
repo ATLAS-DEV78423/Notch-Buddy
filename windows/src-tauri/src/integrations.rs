@@ -46,10 +46,10 @@ fn emit(app: &AppHandle, update: IntegrationUpdate) {
 }
 
 fn client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(TIMEOUT)
-        .build()
-        .unwrap_or_default()
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder().timeout(TIMEOUT).build().unwrap_or_default()
+    });
+    CLIENT.clone()
 }
 
 /// Set from the tray's Pause item. While it is on, nothing reaches the network:
@@ -89,6 +89,8 @@ where
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(delay_secs)).await;
         let mut ticker = tokio::time::interval(Duration::from_secs(every_secs));
+        // Slow multi-request polls must not replay missed ticks in a burst.
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             ticker.tick().await;
             // The ticker keeps its cadence; we just decline to do the work. An

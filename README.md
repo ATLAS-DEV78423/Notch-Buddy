@@ -50,7 +50,7 @@ Meet **Pip**: a soft little squircle with big eyes that pops out of your notch, 
 - 🎵 **Apple Music pill** *(macOS, GitHub build)* — add the Apple Music pill in Settings → Active pills to see what's playing and control playback from the notch; Pip dances while it plays.
 - 👗 **Dress Pip up** — right-click him for the wardrobe. He also dresses up for the seasons on his own.
 - ⌨️ **Keyboard shortcuts** — open the chat, jump to an alert or a terminal, switch pills, mute, send Pip to the desktop or open the wardrobe from anywhere; all customizable in Settings → Shortcuts.
-- 🗂️ **A desktop companion on Windows** *(Windows, 0.2.0)* — the island becomes tab groups (Home, Agents, Media, System, Tools) with a live dashboard: media player with controls, system stats, control centre (volume, brightness, night light, Do Not Disturb), Bluetooth, pomodoro and stopwatch, weather, battery alerts, clipboard-URL banners, nine animated background effects and a compact status strip. See [`windows/README.md`](windows/README.md).
+- 🗂️ **A desktop companion on Windows** *(Windows, 0.3.6)* — the island becomes tab groups (Home, Agents, Media, System, Tools) with a live dashboard: media player with controls, system stats, control centre (volume, brightness, night light, Do Not Disturb), Bluetooth, pomodoro and stopwatch, weather, battery alerts, clipboard-URL banners, nine animated background effects and a compact status strip. See [`windows/README.md`](windows/README.md).
 - 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, 29 handcrafted sounds, a greeting on launch.
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the notch (the top edge of the screen on Windows and Linux).
 - 🖥️ **Any Mac, notch or not** — on an iMac, a Mac mini, or a MacBook with its lid closed on an external display, Pip sits in a small bar at the top of the screen.
@@ -106,6 +106,14 @@ macOS releases are published as `v*` tags. See [CHANGELOG.md](CHANGELOG.md) for 
 > make them and does not rewrite them. Notch-Buddy's own changes are at the top of
 > [CHANGELOG.md](CHANGELOG.md).
 
+### Notch-Buddy fork releases
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| [Windows 0.3.6](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.3.6) | Oct 15, 2026 | Security and bounded-state hardening, authenticated iPhone relay, stable Bluetooth IDs and safer upload flow |
+
+### Upstream Coucou releases
+
 | Version | Date | Highlights |
 |---------|------|------------|
 | [0.2.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.2.0) | Oct 6, 2026 | Copilot CLI, Muse Code, OpenCode and Amp, weekly recap, 10 languages |
@@ -120,7 +128,7 @@ macOS releases are published as `v*` tags. See [CHANGELOG.md](CHANGELOG.md) for 
 | [0.1.1](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.1) | Oct 2, 2026 | Gemini and OpenAI chat, Linux build, more agents and pills, security hardening |
 | [0.1.0](https://github.com/Louis-CFM/coucou/releases/tag/v0.1.0) | Sep 27, 2026 | First release: Mochi, Claude Code sessions, chat, file drop, integrations |
 
-Windows 0.2.0 (this fork) is in [Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.2.0) under the `windows-v*` tag; Linux 0.1.1 (beta) is upstream under `linux-v*`.
+Windows 0.3.6 (this fork) is in [Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.3.6) under the `windows-v*` tag; Linux 0.1.1 (beta) is upstream under `linux-v*`.
 
 ## Demo mode
 
@@ -159,8 +167,8 @@ Everything else, troubleshooting included, is in [docs/IPHONE.md](docs/IPHONE.md
 
 ### Windows
 
-Grab `Coucou-Windows-0.2.0-setup.exe` (or `.msi`) from
-[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.2.0)
+Grab `Coucou-Windows-0.3.6-setup.exe` (or `.msi`) from
+[Releases](https://github.com/ATLAS-DEV78423/Notch-Buddy/releases/tag/windows-v0.3.6)
 and run it — current-user install, no admin prompt. The installer is not
 code-signed yet, so SmartScreen warns: click **More info → Run anyway**.
 Microsoft Defender may also flag it (`Trojan:Win32/Wacatac.H!ml`, a known false

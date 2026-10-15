@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { State, type MediaState, type Settings, type SystemStats } from "./state";
+import { acceptsBluetoothEvent } from "./bluetooth";
 
 /** `weather-update` payload — field names match `State.weather`. */
 export interface WeatherData {
@@ -119,6 +120,7 @@ export const Bridge = {
   chatReset: () => call<void>("chat_reset"),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
+  fileExists: async (path: string) => IS_TAURI ? (await call<boolean>("file_exists", { path })) ?? false : Boolean(path),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   secretSet: (key: string, value: string) => callOrThrow<void>("secret_set", { key, value }),
@@ -153,18 +155,22 @@ export const Bridge = {
 
   // ── Bluetooth ─────────────────────────────────────────────────────────────
   getBtDevices: () => call<BtDevices>("get_bt_devices"),
-  /** `name` is a single string argument: invoke takes `{ name }`, not positional. */
-  btConnect: (name: string) => call<BtAction>("bt_connect", { name }),
-  btDisconnect: (name: string) => call<BtAction>("bt_disconnect", { name }),
+  /** `id` is the stable Windows identity; names are display-only. */
+  btConnect: (id: string) => call<BtAction>("bt_connect", { id }),
+  btDisconnect: (id: string) => call<BtAction>("bt_disconnect", { id }),
 };
 
 export interface BtDevice {
+  /** Stable Windows device/container identity; names are not unique. */
+  id: string;
   name: string;
   /** Icon hint: headphones / speaker / keyboard / mouse / gamepad / phone / "". */
   type: string;
   /** -1 = unknown or disconnected. */
   battery: number;
   connected: boolean;
+  /** True only for devices the worker can control through Windows audio topology. */
+  can_connect: boolean;
 }
 
 export interface BtDevices {
@@ -308,11 +314,9 @@ export function registerBluetoothListeners() {
     State.bluetooth.devices = payload.devices;
     State.notify();
   });
-  void onEvent<{ type: string; name: string; battery: number }>("bt-device-event", (payload) => {
-    const d = State.bluetooth.devices.find((x) => x.name === payload.name);
-    if (!d) return;
-    d.connected = payload.type === "connected";
-    if (payload.battery >= 0) d.battery = payload.battery;
+  void onEvent<{ type: string; id: string; name: string; battery: number; connected: boolean }>("bt-device-event", (payload) => {
+    const d = State.bluetooth.devices.find((x) => x.id === payload.id);
+    if (!d || !acceptsBluetoothEvent(d, payload)) return;
     if (payload.type === "connected") State.reactionEmote = "surprised";
     State.notify();
   });

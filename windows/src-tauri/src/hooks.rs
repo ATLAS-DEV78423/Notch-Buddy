@@ -10,6 +10,7 @@
 // PowerShell or cmd in it breaks.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -32,6 +33,12 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("SubagentStart", 10),
     ("SubagentStop", 10),
 ];
+
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+pub(crate) fn write_guard() -> MutexGuard<'static, ()> {
+    WRITE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner())
+}
 
 /// Marker that identifies a Coucou entry inside settings.json.
 const MARKER: &str = "coucou-hook";
@@ -222,8 +229,48 @@ pub(crate) fn backup_path_for(path: &Path, stamp: &str) -> PathBuf {
     ))
 }
 
+pub(crate) fn next_backup_path(path: &Path, stamp: &str) -> PathBuf {
+    let base = backup_path_for(path, stamp);
+    (0..1000u32)
+        .map(|suffix| {
+            if suffix == 0 {
+                base.clone()
+            } else {
+                PathBuf::from(format!("{}.{}", base.display(), suffix))
+            }
+        })
+        .find(|candidate| !candidate.exists())
+        .unwrap_or(base)
+}
+
+pub(crate) fn backup_existing(path: &Path, stamp: &str) -> std::io::Result<PathBuf> {
+    let bytes = std::fs::read(path)?;
+    let base = backup_path_for(path, stamp);
+    for suffix in 0..1000u32 {
+        let candidate = if suffix == 0 {
+            base.clone()
+        } else {
+            PathBuf::from(format!("{}.{}", base.display(), suffix))
+        };
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = match options.open(&candidate) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        use std::io::Write;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        return Ok(candidate);
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "all backup names are in use"))
+}
+
 fn backup_path() -> PathBuf {
-    backup_path_for(&settings_path(), &stamp())
+    next_backup_path(&settings_path(), &stamp())
 }
 
 /// Identifies the exact bytes a preview was computed from. FNV-1a is plenty:
@@ -286,6 +333,7 @@ pub fn preview(install: bool) -> Result<HookPreview, String> {
 /// and make them look at a fresh diff, because the only thing worse than not
 /// installing the hooks is silently reverting somebody else's edit.
 pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
+    let _guard = write_guard();
     let path = settings_path();
     let dir = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -300,10 +348,11 @@ pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
         ));
     }
 
-    let backup = backup_path();
-    if path.exists() {
-        std::fs::copy(&path, &backup).map_err(|e| format!("backup failed: {e}"))?;
-    }
+    let backup = if path.exists() {
+        backup_existing(&path, &stamp()).map_err(|e| format!("backup failed: {e}"))?
+    } else {
+        backup_path()
+    };
 
     let next = if install { merged(&current) } else { without_ours(&current) };
     let mut text = pretty(&next);
@@ -321,7 +370,14 @@ pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
         let _ = std::fs::remove_file(&temp);
         return Err(format!("write failed: {err}"));
     }
-    if let Err(err) = std::fs::rename(&temp, &path) {
+    if current_fingerprint() != fingerprint {
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!(
+            "{} changed while it was being backed up. Nothing was written — review the new diff.",
+            path.display()
+        ));
+    }
+    if let Err(err) = settings::replace_atomically(&temp, &path) {
         let _ = std::fs::remove_file(&temp);
         return Err(format!("write failed: {err}"));
     }
@@ -588,6 +644,21 @@ mod tests {
         assert_eq!(fingerprint(b"{}"), fingerprint(b"{}"));
         assert_ne!(fingerprint(b"{}"), fingerprint(b"{ }"));
         assert_ne!(fingerprint(b""), fingerprint(b"{}"));
+    }
+
+    #[test]
+    fn backup_copy_uses_a_collision_safe_name() {
+        let dir = std::env::temp_dir().join(format!("coucou-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, b"original").unwrap();
+        std::fs::write(dir.join("settings.json.bak-stamp"), b"first").unwrap();
+
+        let backup = backup_existing(&path, "stamp").unwrap();
+        assert_eq!(backup, dir.join("settings.json.bak-stamp.1"));
+        assert_eq!(std::fs::read(backup).unwrap(), b"original");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[cfg(unix)]

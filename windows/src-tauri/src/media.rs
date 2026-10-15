@@ -205,9 +205,17 @@ mod imp {
 
     /// Returns whether a session exists — the watcher backs off when nothing plays.
     pub fn poll_once(app: &AppHandle) -> bool {
+        poll(app, None)
+    }
+
+    fn poll(app: &AppHandle, visible: Option<(&PollGate, u64)>) -> bool {
         ensure_com();
         let state = current_state();
         let has_session = state.is_some();
+        // SMTC can block; discard a hidden session's result without changing WATCH.
+        if visible.is_some_and(|(gate, generation)| !gate.is_current(generation)) {
+            return has_session;
+        }
         let track = state
             .as_ref()
             .map(|s| (s.track.clone(), s.artist.clone(), s.source_app.clone()));
@@ -238,10 +246,10 @@ mod imp {
         std::thread::spawn(move || {
             ensure_com();
             loop {
-                gate.wait_until_active();
-                while gate.is_active() {
-                    let period = if poll_once(&app) { 1 } else { 5 };
-                    std::thread::sleep(Duration::from_secs(period));
+                let generation = gate.wait_until_active();
+                while gate.is_current(generation) {
+                    let period = if poll(&app, Some((&gate, generation))) { 1 } else { 5 };
+                    if !gate.wait_interval(generation, Duration::from_secs(period)) { break; }
                 }
             }
         });

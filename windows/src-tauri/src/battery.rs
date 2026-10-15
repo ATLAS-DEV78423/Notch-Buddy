@@ -57,17 +57,19 @@ mod imp {
     pub fn setup(app: &AppHandle, gate: Arc<PollGate>) {
         let app = app.clone();
         std::thread::spawn(move || {
-        loop {
-            gate.wait_until_active();
-            while gate.is_active() {
-                // Emit every tick, not only on change: the first emit races JS
-                // listener registration, so a never-changing reading (AC at
-                // 100%) would leave State.battery stale all session. The
-                // frontend edge logic is diff-based, periodic emits are safe.
-                if let Some(now) = read() {
-                    let _ = app.emit_to(WINDOW_LABEL, "battery-status", &now);
-                }
-                    std::thread::sleep(Duration::from_secs(30));
+            loop {
+                let generation = gate.wait_until_active();
+                while gate.is_current(generation) {
+                    // Emit every tick, not only on change: the first emit races JS
+                    // listener registration, so a never-changing reading (AC at
+                    // 100%) would leave State.battery stale all session. The
+                    // frontend edge logic is diff-based, periodic emits are safe.
+                    if let Some(now) = read() {
+                        if gate.is_current(generation) {
+                            let _ = app.emit_to(WINDOW_LABEL, "battery-status", &now);
+                        }
+                    }
+                    if !gate.wait_interval(generation, Duration::from_secs(30)) { break; }
                 }
             }
         });

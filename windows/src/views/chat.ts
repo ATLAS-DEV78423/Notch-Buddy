@@ -47,11 +47,12 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", type: "button", "aria-label": "Send", title: "Send" }, svg(ICONS.arrowUp, 11));
   const bar = h("div", { class: "chat-bar" }, input, send);
+  const error = h("div", { class: "chat-error" });
 
   const el = h(
     "div",
     { class: "view" },
-    h("div", { class: "card wash chat-card" }, h("div", { class: "chat-body" }, chipRow, log, bar)),
+     h("div", { class: "card wash chat-card" }, h("div", { class: "chat-body" }, chipRow, log, error, bar)),
   );
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
@@ -63,6 +64,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     if (!query || sending) return;
     input.value = "";
     sending = true;
+    State.noteMessage = null;
     Sound.play("send");
 
     State.chatHistory.push({ id: nextId++, role: "user", content: query });
@@ -71,22 +73,21 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     onHeightChange();
 
     const file = State.droppedFile;
-    const context: ChatContext | null =
-      State.chatHistory.length === 1 && file ? { kind: "file", name: file.name, path: file.path } : null;
-    if (file) {
-      State.droppedFile = null;
-      State.notify();
-    }
-
+    const context: ChatContext | null = file ? { kind: "file", name: file.name, path: file.path } : null;
     try {
       const reply = await Bridge.chatSend(query, context);
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
+      if (file) {
+        State.droppedFile = null;
+        State.promptContext = null;
+      }
       State.stateOverride = null;
+      State.noteMessage = null;
       Sound.play("finish");
     } catch (err) {
       State.stateOverride = null;
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
-      State.view = "note";
+      error.textContent = State.noteMessage;
       Sound.play("error");
     } finally {
       sending = false;
@@ -128,6 +129,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
       input.placeholder = State.chatHistory.length === 0 ? "Ask me anything…" : "Continue…";
       input.disabled = sending;
+      error.textContent = State.noteMessage ?? "";
     },
     focus() {
       input.focus();

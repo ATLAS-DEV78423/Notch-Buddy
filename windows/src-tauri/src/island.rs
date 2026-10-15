@@ -7,7 +7,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewWindow};
@@ -55,7 +55,8 @@ pub struct IslandRect {
 
 /// Wakes / parks the cursor poll thread so a hidden island costs literally nothing.
 pub struct PollGate {
-    active: Mutex<bool>,
+    // The generation invalidates waits and rate baselines even on a quick hide/reveal.
+    active: Mutex<(bool, u64)>,
     cv: Condvar,
     pub collapsed: AtomicBool,
     pub rect: Mutex<IslandRect>,
@@ -66,7 +67,7 @@ pub struct PollGate {
 impl PollGate {
     pub fn new() -> Self {
         Self {
-            active: Mutex::new(false),
+            active: Mutex::new((false, 0)),
             cv: Condvar::new(),
             collapsed: AtomicBool::new(true),
             rect: Mutex::new(IslandRect::default()),
@@ -85,19 +86,37 @@ impl PollGate {
 
     pub fn set_active(&self, on: bool) {
         let mut guard = self.active.lock().unwrap();
-        *guard = on;
-        self.cv.notify_all();
-    }
-
-    pub(crate) fn wait_until_active(&self) {
-        let mut guard = self.active.lock().unwrap();
-        while !*guard {
-            guard = self.cv.wait(guard).unwrap();
+        if guard.0 != on {
+            *guard = (on, guard.1.wrapping_add(1));
+            self.cv.notify_all();
         }
     }
 
-    pub(crate) fn is_active(&self) -> bool {
-        *self.active.lock().unwrap()
+    pub(crate) fn wait_until_active(&self) -> u64 {
+        let mut guard = self.active.lock().unwrap();
+        while !guard.0 {
+            guard = self.cv.wait(guard).unwrap();
+        }
+        guard.1
+    }
+
+    pub(crate) fn is_current(&self, generation: u64) -> bool {
+        *self.active.lock().unwrap() == (true, generation)
+    }
+
+    /// True only when this visible session reaches its deadline. Hide cancels
+    /// it; duplicate activation and spurious notifications never advance a tick.
+    pub(crate) fn wait_interval(&self, generation: u64, period: Duration) -> bool {
+        let deadline = Instant::now() + period;
+        let mut guard = self.active.lock().unwrap();
+        while *guard == (true, generation) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return true;
+            }
+            guard = self.cv.wait_timeout(guard, remaining).unwrap().0;
+        }
+        false
     }
 }
 
@@ -203,11 +222,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
         // find no cursor costs CPU for nothing.
         let (period, screen_every) = if platform::CURSOR_POLL { (16, 30) } else { (500, 1) };
         loop {
-            gate.wait_until_active();
+            let generation = gate.wait_until_active();
             let mut last = (f64::MIN, f64::MIN);
             let mut ticks: u32 = 0;
-            while gate.is_active() {
-                std::thread::sleep(Duration::from_millis(period));
+            while gate.wait_interval(generation, Duration::from_millis(period)) {
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -216,10 +234,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 ticks = ticks.wrapping_add(1);
                 if ticks % screen_every == 0 {
                     let now = current_screen_key(&app);
+                    if !gate.is_current(generation) { break; }
                     if now.is_some() && now != last_screen {
                         let first = last_screen.is_none();
                         last_screen = now;
-                        if !first {
+                        if !first && gate.is_current(generation) {
                             crate::log::line("display layout changed — repositioning".to_string());
                             let _ = app.emit_to(WINDOW_LABEL, "screen-changed", ());
                         }
@@ -230,6 +249,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 let Ok(origin) = win.outer_position() else { continue };
                 let scale = win.scale_factor().unwrap_or(1.0);
                 let Some((cx, cy)) = cursor_physical() else { continue };
+                if !gate.is_current(generation) { break; }
                 let x = (cx - origin.x as f64) / scale;
                 let y = (cy - origin.y as f64) / scale;
                 let size = match win.inner_size() {

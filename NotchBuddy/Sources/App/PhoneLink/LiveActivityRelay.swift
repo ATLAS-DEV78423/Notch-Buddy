@@ -2,6 +2,8 @@
 import AppKit
 import CloudKit
 import Combine
+import CryptoKit
+import Security
 
 // MARK: - iPhone plan, step 8: Mochi leaves for the iPhone
 //
@@ -26,6 +28,9 @@ final class LiveActivityRelay {
     static let relayURLKey = "phoneRelayURL"
     /// The deployed relay (relay/README.md).
     static let defaultRelayURL = "https://coucou-relay.raillelouis.workers.dev"
+    /// Generated once per Mac and kept in the Keychain. It authenticates relay requests;
+    /// it is not the APNs key and is never written to CloudKit or sent to the iPhone.
+    private static let relaySecretKey = "phone-relay-client-secret"
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
 
@@ -321,7 +326,10 @@ final class LiveActivityRelay {
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body),
+              let auth = authenticatedHeaders(body: bodyData) else { return false }
+        for (name, value) in auth { request.setValue(value, forHTTPHeaderField: name) }
+        request.httpBody = bodyData
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -348,6 +356,51 @@ final class LiveActivityRelay {
             log("relay \(event) failed: \(error.localizedDescription)")
         }
         return false
+    }
+
+    // MARK: Relay authentication
+
+    /// The relay has no durable per-install registry, so the Keychain secret is
+    /// presented over HTTPS and proves possession through an HMAC signature.
+    private func authenticatedHeaders(body: Data) -> [String: String]? {
+        let secret: String
+        if let stored = KeychainStore.shared.get(Self.relaySecretKey), !stored.isEmpty {
+            secret = stored
+        } else {
+            var bytes = Data(count: 32)
+            guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
+            secret = bytes.map { String(format: "%02x", $0) }.joined()
+            KeychainStore.shared.set(Self.relaySecretKey, value: secret)
+        }
+        guard let secretData = Self.hexData(secret) else { return nil }
+        let timestamp = String(Int(Date().timeIntervalSince1970))
+        var nonceData = Data(count: 16)
+        guard SecRandomCopyBytes(kSecRandomDefault, nonceData.count, &nonceData) == errSecSuccess else { return nil }
+        let nonce = nonceData.map { String(format: "%02x", $0) }.joined()
+        var signed = Data("\(timestamp).\(nonce).".utf8)
+        signed.append(body)
+        let signature = HMAC<SHA256>.authenticationCode(for: signed, using: SymmetricKey(data: secretData))
+        let client = SHA256.hash(data: secretData).map { String(format: "%02x", $0) }.joined()
+        return [
+            "X-Relay-Client": client,
+            "X-Relay-Secret": secret,
+            "X-Relay-Timestamp": timestamp,
+            "X-Relay-Nonce": nonce,
+            "X-Relay-Signature": signature.map { String(format: "%02x", $0) }.joined(),
+        ]
+    }
+
+    private static func hexData(_ value: String) -> Data? {
+        guard value.count == 64 else { return nil }
+        var data = Data(capacity: 32)
+        var index = value.startIndex
+        for _ in 0..<32 {
+            let next = value.index(index, offsetBy: 2)
+            guard let byte = UInt8(value[index..<next], radix: 16) else { return nil }
+            data.append(byte)
+            index = next
+        }
+        return data
     }
 
     // MARK: Tokens

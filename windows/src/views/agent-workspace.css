@@ -1,0 +1,548 @@
+/* Reference-aligned agent workspace. Imported after the legacy sheet so the
+   redesign stays scoped to the two overview modes. */
+
+#header { position: relative; z-index: 20; }
+
+#header .header-nav {
+  position: relative;
+  margin-left: 10px;
+  min-width: 0;
+}
+
+#header .header-nav > summary {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 8px;
+  color: var(--dim-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+#header .header-nav > summary::-webkit-details-marker { display: none; }
+#header .header-nav > summary svg { transition: transform 160ms ease; }
+#header .header-nav[open] > summary,
+#header .header-nav > summary:hover { background: var(--tab-on); color: var(--ink); }
+#header .header-nav > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#header .header-nav-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  left: 0;
+  width: 154px;
+  padding: 7px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(15, 17, 23, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+}
+
+#header .nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+#header .nav-icon-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim-2);
+  cursor: pointer;
+  transition: transform 180ms var(--press), background-color 160ms ease, color 160ms ease;
+}
+
+#header .nav-icon-button:hover,
+#header .nav-icon-button.active {
+  color: var(--ink);
+  background: var(--tab-on);
+}
+
+#header .nav-icon-button:focus-visible,
+#header .header-nav > summary:focus-visible,
+#header .tabs .tab:focus-visible,
+#header .header-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#header .tabs .tab,
+#header .header-actions button { position: relative; cursor: pointer; }
+
+#header [data-tooltip]::after {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%) translateY(2px);
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: #11151d;
+  color: var(--ink);
+  content: attr(data-tooltip);
+  font: 500 10px var(--font);
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+#header [data-tooltip]:hover::after,
+#header [data-tooltip]:focus-visible::after {
+  transform: translateX(-50%);
+  opacity: 1;
+}
+
+#header .header-nav > summary::after,
+#header .tabs .tab::after,
+#header .header-actions button::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+}
+
+#header .tabs .tab:first-child::after { left: 0; transform: none; }
+#header .header-actions button::after { left: auto; right: 0; transform: none; }
+#header .header-nav[open] > summary::after { display: none; }
+
+#header .nav-icon-button:active { transform: scale(0.94); }
+
+/* The compact reference is a 640 × 160 overview: the left card carries the
+   session identity and live step, while the right side is only a pill strip. */
+.overview.agent-carousel {
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+  padding: 0;
+  border-radius: 20px;
+  background: #080a10;
+}
+
+.overview.agent-carousel > .left {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.overview.agent-carousel > .right {
+  flex: 0 0 166px;
+  width: 166px;
+  min-width: 0;
+}
+
+.overview.agent-carousel > .left > .card,
+.overview.agent-carousel > .right > .card,
+.overview.agent-detail > .left > .card,
+.overview.agent-detail > .right > .card {
+  height: 100%;
+  min-height: 0;
+  border-radius: 16px;
+  background: #11151d;
+}
+
+.overview.agent-carousel .left-body,
+.overview.agent-detail .left-body { height: 100%; min-height: 0; min-width: 0; }
+
+.overview.agent-carousel .session {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 10px 12px 9px 104px;
+  overflow: hidden;
+}
+
+.overview.agent-carousel .session-head.agent-main-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 2px 6px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+}
+
+.overview.agent-carousel .session-head.agent-main-trigger:hover,
+.overview.agent-detail .session-head.agent-main-trigger:hover {
+  transform: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .session-provider {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-2);
+  font: 400 11px/1.3 var(--font);
+}
+
+.overview:is(.agent-carousel, .agent-detail) .session-head .thought-line {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .session-head > .dot { display: none; }
+.overview.agent-carousel .session-head .name { grid-area: 1 / 1; }
+.overview.agent-carousel .session-head .session-provider { display: none; }
+.overview.agent-carousel .session-head .thought-line { grid-area: 1 / 2; }
+.overview.agent-carousel .session-head .session-expand { grid-area: 1 / 3 / 3; }
+.overview.agent-carousel .session-head .chip,
+.overview.agent-carousel .session-head .count { display: none; }
+
+.overview:is(.agent-carousel, .agent-detail) .session-step-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-2);
+  font: 400 10px var(--font);
+}
+
+.overview.agent-carousel .session-step-preview { grid-area: 2 / 1 / 3 / 3; }
+
+.session-expand {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--dim-2);
+  cursor: pointer;
+}
+
+.session-expand:hover { color: var(--ink); background: rgba(255, 255, 255, 0.1); }
+.session-expand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.overview.agent-carousel .step-rail {
+  flex: 0 0 auto;
+  min-height: 26px;
+  overflow: hidden;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+}
+
+.overview.agent-carousel .session-work {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.overview.agent-carousel .session.has-approval { grid-template-rows: auto minmax(0, 1fr); }
+.overview.agent-carousel .session.has-approval .step-rail,
+.overview.agent-carousel .session.has-approval .session-step-preview { display: none; }
+.overview.agent-carousel .session.has-approval .session-expand { grid-row: 1; }
+.overview.agent-carousel .session.has-approval .session-work { grid-row: 2; }
+
+.overview.agent-carousel .step-chip {
+  max-width: 180px;
+  min-height: 23px;
+  padding: 3px 7px;
+}
+
+.overview.agent-carousel .step-view {
+  display: none;
+}
+
+.overview.agent-carousel .agent-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.overview.agent-carousel .agent-pill {
+  flex: 0 0 142px;
+  min-height: 52px;
+  padding: 8px;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .pill .lbl {
+  position: static;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .pill .mini { margin: 0; flex: none; }
+
+.overview.agent-carousel .jump { top: auto; right: auto; bottom: 8px; left: 76px; }
+
+/* Expanded reference: the session owns nearly the whole card. The right-side
+   agents remain reachable as a narrow strip instead of a second column. */
+.overview.agent-detail {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  border-radius: 20px;
+  background: #080a10;
+}
+
+.overview.agent-detail > .left {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.overview.agent-detail > .right {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  bottom: 9px;
+  width: min(190px, calc(100% - 170px));
+  max-width: 190px;
+  height: 38px;
+}
+
+.overview.agent-detail > .left > .card { padding: 0; }
+.overview.agent-detail > .right > .card {
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(13, 17, 24, 0.94);
+}
+
+.overview.agent-detail .agent-pills {
+  display: flex;
+  gap: 5px;
+  height: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.overview.agent-detail .agent-pill {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 9px;
+  font-size: 10px;
+}
+
+.overview.agent-detail .session {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  /* The avatar ends at island y=111; identity starts below its reserved row. */
+  grid-template-rows: 64px auto minmax(0, 1fr);
+  align-content: stretch;
+  height: 100%;
+  box-sizing: border-box;
+  gap: 6px 12px;
+  padding: 12px 12px 48px;
+  overflow: hidden;
+}
+
+.overview.agent-detail .session-head.agent-main-trigger {
+  grid-column: 1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-height: 0;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.overview.agent-detail .session-head .name { min-width: 0; }
+.overview.agent-detail .session-head .name { grid-row: 1; }
+.overview.agent-detail .session-head .session-provider { grid-row: 2; }
+.overview.agent-detail .session-head .thought-line { grid-row: 3; }
+.overview.agent-detail .session-head .session-step-preview,
+.overview.agent-detail .session-head .chip,
+.overview.agent-detail .session-head .count { display: none; }
+.overview.agent-detail .session-expand { display: none; }
+
+.overview.agent-detail .step-rail {
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 3px;
+  border: 1px solid var(--agent-hairline-soft);
+  border-radius: 11px;
+  background: rgba(5, 7, 12, 0.38);
+}
+
+.overview.agent-detail .step-chip,
+.overview.agent-detail .step-status {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  min-height: 27px;
+  border-radius: 8px;
+}
+
+.overview.agent-detail .step-chip-label { min-width: 0; }
+.overview.agent-detail .step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  color: var(--green);
+  font: 600 10px var(--font);
+}
+
+.overview.agent-detail .session-work {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.overview.agent-detail .step-view {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.overview.agent-detail .diff-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.overview.agent-detail .diff-head { flex: none; min-width: 0; }
+.overview.agent-detail .diff-path { min-width: 0; }
+.overview.agent-detail .diff-row { width: max-content; min-width: 100%; box-sizing: border-box; }
+.overview.agent-detail .diff-text { flex: none; overflow: visible; text-overflow: clip; }
+.overview.agent-detail .cmd-block,
+.overview.agent-detail .step-plain { flex: none; min-width: 0; }
+.overview.agent-detail .cmd-text {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.overview.agent-detail .step-plain-label,
+.overview.agent-detail .step-plain-target {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.overview:is(.agent-carousel, .agent-detail) :is(.cmd-output, .step-output) {
+  flex: none;
+  max-height: 110px;
+  margin: 0;
+  padding: 7px 9px;
+  overflow: auto;
+  border-top: 1px solid var(--agent-hairline-soft);
+  color: var(--dim-2);
+  font: 400 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .approval-inline {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.overview:is(.agent-carousel, .agent-detail) .session.has-approval .approval-inline { display: block; }
+.overview.agent-detail .approval-inline { max-height: 65%; }
+.overview.agent-carousel .approval-inline { flex: 1 1 auto; padding: 5px 7px; }
+.overview.agent-carousel .approval-inline .cmd-line { margin-bottom: 4px; }
+.overview.agent-carousel .approval-inline .actions .btn { padding: 4px 10px; font-size: 11px; }
+.overview:is(.agent-carousel, .agent-detail) .approval-inline .cmd-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+.overview:is(.agent-carousel, .agent-detail) .approval-inline .actions .btn {
+  min-width: 0;
+  justify-content: center;
+}
+
+.overview.agent-detail .agent-collapse {
+  top: auto;
+  right: auto;
+  bottom: 14px;
+  left: 12px;
+  height: 24px;
+  max-width: 104px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.overview.agent-detail .jump {
+  top: auto;
+  right: auto;
+  bottom: 14px;
+  left: 124px;
+  width: 24px;
+  height: 24px;
+}
+
+.overview.agent-carousel :is(.session-expand, .agent-pill, .step-chip):focus-visible,
+.overview.agent-detail :is(.session-expand, .agent-pill, .step-chip):focus-visible {
+  outline: 2px solid rgba(126, 190, 255, 0.95);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #header .header-nav > summary svg { transition: none; }
+  #header [data-tooltip]::after { transition: none; }
+  #header .nav-icon-button { transition: none; }
+  #header .nav-icon-button:active { transform: none; }
+}

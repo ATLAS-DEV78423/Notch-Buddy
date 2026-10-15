@@ -1,5 +1,5 @@
 // Mini Mochis (pills + compact grid) — port of MiniBotCanvasView.
-// Each canvas owns a BotEngine; the island's frame loop ticks every live one.
+// Each canvas owns a BotEngine; the island ticks only the visible surface.
 
 import { BotEngine, hexToRGB } from "./engine";
 import type { AgentTask } from "../core/state";
@@ -72,16 +72,20 @@ export function syncMiniBotStates(tasks: AgentTask[]) {
   }
 }
 
-export function tickMiniBots(dt: number) {
+export function tickMiniBots(dt: number, visibleRoot: HTMLElement | null): boolean {
+  let busy = false;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   for (const mb of live.values()) {
+    if (!visibleRoot || !mb.canvas.isConnected || !visibleRoot.contains(mb.canvas)) continue;
     const ctx = mb.canvas.getContext("2d");
     if (!ctx) continue;
     mb.engine.update(dt);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, mb.cssSize, mb.cssSize);
     mb.engine.draw(ctx, mb.cssSize, mb.cssSize);
+    busy ||= mb.engine.busy;
   }
+  return busy;
 }
 
 export const miniBotCount = () => live.size;

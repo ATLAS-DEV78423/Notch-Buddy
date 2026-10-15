@@ -1,0 +1,533 @@
+/* Shared graphite materials. Loaded after style.css so this is the single
+   visual finish layer; geometry and view behavior remain owned by the views. */
+
+:root {
+  --surface-0: #0a0c0f;
+  --surface-1: #111419;
+  --surface-2: #171b21;
+  --surface-3: #20252d;
+  --edge: rgba(255, 255, 255, 0.075);
+  --edge-strong: rgba(255, 255, 255, 0.13);
+  --inner-light: rgba(255, 255, 255, 0.06);
+  --press: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html,
+body {
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button:not(:disabled),
+[role="button"],
+[role="switch"] {
+  cursor: pointer;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="switch"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.cc-slider:focus-visible,
+.media-progress:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(77, 163, 255, 0.32);
+  color: var(--ink);
+}
+
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-width: thin;
+}
+
+/* The notch is black at rest, then gains a quiet graphite material when open. */
+#island {
+  background: var(--surface-0);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+#content {
+  color: var(--ink);
+}
+
+#header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.tab,
+.header-actions button,
+.tab-group,
+.sub-view-pill {
+  color: var(--dim-2);
+  transition: transform 180ms var(--press), background-color 160ms ease, color 160ms ease;
+}
+
+.tab:hover,
+.header-actions button:hover,
+.tab-group:hover,
+.sub-view-pill:hover {
+  background: rgba(255, 255, 255, 0.065);
+  color: var(--ink-2);
+}
+
+.tab.on,
+.tab-group.active,
+.sub-view-pill.active {
+  background: var(--surface-3);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.tab-seg-thumb {
+  background: var(--surface-3);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.view {
+  transition: opacity 180ms ease, transform 220ms var(--press);
+}
+
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 1px 0 var(--inner-light), var(--shadow);
+}
+
+.card.wash::after {
+  background: var(--wash, transparent);
+  opacity: 0.42;
+}
+
+.card.wash {
+  isolation: isolate;
+}
+
+.card.wash > * {
+  position: relative;
+  z-index: 1;
+}
+
+.btn,
+.cc-toggle,
+.bt-btn,
+.bt-refresh,
+.icon-btn,
+.link-btn,
+.send-btn,
+.mc-btn,
+.mc-vol,
+.banner-open,
+.banner-close,
+.int-more,
+.int-back,
+.int-page,
+.int-pill,
+.swatch,
+.fx-opt,
+.seg button,
+.task-del {
+  transition: transform 180ms var(--press), background-color 160ms ease, border-color 160ms ease,
+    color 160ms ease, box-shadow 160ms ease;
+}
+
+.btn:active,
+.cc-toggle:active,
+.bt-btn:active,
+.bt-refresh:active,
+.icon-btn:active,
+.send-btn:active,
+.mc-btn:active,
+.mc-vol:active,
+.banner-open:active,
+.banner-close:active,
+.int-more:active,
+.int-back:active,
+.int-page:active,
+.int-pill:active,
+.swatch:active,
+.fx-opt:active,
+.seg button:active {
+  transform: scale(0.95);
+}
+
+.btn.primary,
+.send-btn {
+  background: var(--accent);
+  color: #06101d;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.btn.primary:hover,
+.send-btn:hover {
+  background: #69b2ff;
+}
+
+.btn.secondary,
+.cc-toggle,
+.bt-btn,
+.bt-refresh {
+  background: var(--surface-3);
+  color: var(--ink-2);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.btn.secondary:hover,
+.cc-toggle:hover,
+.bt-btn:hover:not(:disabled),
+.bt-refresh:hover {
+  background: #2a313b;
+}
+
+.btn:disabled,
+button:disabled {
+  opacity: 0.45;
+}
+
+.overview > .left,
+.overview > .right {
+  min-width: 0;
+}
+
+.who .name,
+.title,
+.media-track,
+.weather-temp,
+.timer-display,
+.widget-value {
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.who-row,
+.sub,
+.reply,
+.weather-condition,
+.weather-details,
+.stat-label,
+.cc-label,
+.bt-count,
+.bt-empty,
+.media-artist,
+.media-time,
+.int-status,
+.int-ago,
+.int-sub,
+.int-stat-label,
+.widget-title,
+.widget-empty,
+.cc-note {
+  color: var(--dim);
+}
+
+.widget {
+  background: var(--surface-3);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+  transition: transform 180ms var(--press), background-color 160ms ease, border-color 160ms ease;
+}
+
+.widget:hover {
+  background: #2a313b;
+  border-color: var(--edge-strong);
+  transform: translateY(-1px);
+}
+
+.widget:active {
+  background: var(--surface-3);
+  transform: scale(0.97);
+}
+
+.view-weather,
+.view-stats,
+.view-control-center,
+.view-bluetooth,
+.view-media,
+.view-media-empty {
+  color: var(--ink);
+}
+
+.stat-bar,
+.cc-slider,
+.media-progress,
+.up-track {
+  background: #090b0e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.stat-fill,
+.cc-slider-fill,
+.media-progress-fill,
+.up-fill {
+  background: var(--accent);
+}
+
+.cc-slider-knob,
+.media-progress-knob {
+  background: #f8fbff;
+  box-shadow: 0 0 0 2px var(--surface-2), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.cc-toggle.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.cc-row,
+.stat-row {
+  margin-bottom: 10px;
+}
+
+.cc-icon-btn:hover,
+.mc-vol:hover,
+.mc-btn:hover,
+.icon-btn:hover,
+.int-page:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+
+.media-art-wrap {
+  background: var(--surface-1);
+  box-shadow: inset 0 1px 0 var(--inner-light), 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.media-progress-fill {
+  background: var(--accent);
+}
+
+.media-controls {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 7px;
+}
+
+.mc-play {
+  color: var(--ink);
+}
+
+.chat-card,
+.drop-card,
+.up-card {
+  background: var(--surface-2);
+}
+
+.chat-body,
+.drop-body {
+  padding-right: 14px;
+}
+
+.chat-card .chip,
+.drop-tags span {
+  background: var(--surface-3);
+  border-color: var(--edge);
+  color: var(--ink-2);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.chat-card .chip-dot {
+  background: var(--accent);
+}
+
+.bubble,
+.chat-bar,
+.task-input {
+  background: var(--surface-3);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.bubble {
+  color: var(--ink-2);
+}
+
+.chat-bar:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.chat-input {
+  caret-color: var(--accent);
+}
+
+.drop-frame rect {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+.drop-card.over {
+  background: #16221e;
+}
+
+.drop-card.over .drop-frame rect {
+  stroke: var(--green-2);
+}
+
+.up-card.done {
+  background: #14221d;
+}
+
+.up-fill {
+  background: var(--green-2);
+}
+
+.up-glow {
+  display: none;
+}
+
+.banner {
+  background: var(--surface-3);
+  border-color: var(--edge-strong);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 var(--inner-light);
+}
+
+.banner-open {
+  background: var(--accent);
+  color: #06101d;
+}
+
+.banner-fuse {
+  background: var(--accent);
+}
+
+.view-pomodoro,
+.view-stopwatch {
+  color: var(--ink);
+}
+
+.task-input {
+  border: 1px solid transparent;
+}
+
+.task-input:focus {
+  border-color: var(--accent);
+}
+
+.task {
+  border-radius: 8px;
+}
+
+.task:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.int-card {
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding-top: 10px;
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.int-row,
+.int-page {
+  border-radius: 7px;
+}
+
+.int-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.int-name,
+.int-row.first .int-name,
+.int-commit,
+.int-stat-value,
+.int-total span {
+  color: var(--ink-2);
+}
+
+.int-link {
+  color: var(--accent);
+}
+
+.int-pill {
+  background: var(--surface-3);
+  border-color: var(--edge);
+  color: var(--dim-2);
+}
+
+.int-pill:hover {
+  color: var(--ink);
+  border-color: var(--edge-strong);
+}
+
+.bt-device {
+  background: var(--surface-1);
+  border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 var(--inner-light);
+}
+
+.code,
+.diff {
+  background: #0b0e12;
+}
+
+.code,
+.diff {
+  border-color: var(--edge);
+}
+
+.notice.ok {
+  background: rgba(34, 197, 94, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.notice.err {
+  background: rgba(244, 80, 94, 0.14);
+}
+
+.notice.warn {
+  background: rgba(245, 165, 36, 0.13);
+}
+
+/* Keep existing compact layouts inside the island while honoring Pip's 60px
+   safe zone on the left. No view is allowed to grow the native window. */
+.dashboard-grid,
+.view-stats,
+.view-control-center,
+.view-bluetooth,
+.view-media,
+.view-media-empty {
+  padding-left: var(--pip-safe-inset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .btn:active,
+  .cc-toggle:active,
+  .bt-btn:active,
+  .bt-refresh:active,
+  .icon-btn:active,
+  .send-btn:active,
+  .mc-btn:active,
+  .mc-vol:active,
+  .banner-open:active,
+  .banner-close:active,
+  .int-more:active,
+  .int-back:active,
+  .int-page:active,
+  .int-pill:active,
+  .swatch:active,
+  .fx-opt:active,
+  .seg button:active {
+    transform: none;
+  }
+}

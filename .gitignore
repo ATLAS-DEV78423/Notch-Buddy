@@ -27,6 +27,10 @@ graphify-out/
 
 # Tauri build artefacts
 windows/target/
+windows/target-*/
 windows/node_modules/
 windows/dist/
 windows/release/
+
+# Local OmniRush workspace state
+.omnirush/

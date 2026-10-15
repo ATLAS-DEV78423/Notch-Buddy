@@ -240,7 +240,7 @@ namespace WinBt {
                 try { result = Scan().ToArray(); } catch { }
                 finally { done.Set(); }
             });
-            done.WaitOne();
+            if (!done.WaitOne(15000)) return null;
             return result;
         }
 
@@ -263,7 +263,7 @@ namespace WinBt {
                 } catch { }
                 finally { done.Set(); }
             });
-            done.WaitOne();
+            done.WaitOne(15000);
             return outcome;
         }
 
@@ -424,21 +424,25 @@ function Find-Battery($name, $battMap) {
     return -1
 }
 
-# Names of the Bluetooth devices Windows reports as connected (WinRT), or @()
-# when WinRT is unavailable or the query times out.
-function Get-WinRtNames {
-    $names = @()
+# General Bluetooth devices Windows reports as connected (WinRT), retaining the
+# stable DeviceInformation.Id. Windows does not expose a generic connect API for
+# these devices; they are shown so the UI can explain that Windows manages them.
+function Get-WinRtDevices {
+    $devices = @()
     if ($btSelector -and $asTaskGeneric) {
         try {
             $op = [Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($btSelector)
             $asTask = $asTaskGeneric.MakeGenericMethod([Windows.Devices.Enumeration.DeviceInformationCollection])
             $task = $asTask.Invoke($null, @($op))
             if ($task.Wait(3000)) {
-                $names = @($task.Result | ForEach-Object { Normalize-BtName $_.Name } | Where-Object { $_ })
+                $devices = @($task.Result | ForEach-Object {
+                    $name = Normalize-BtName $_.Name
+                    if ($name) { [pscustomobject]@{ id = $_.Id; name = $name } }
+                })
             }
         } catch {}
     }
-    return ,$names
+    return ,$devices
 }
 
 # Icon hint for the island, from the reference's pickDeviceIcon
@@ -475,14 +479,19 @@ function Get-BtDevices {
         $b = -1
         if ($d.Connected) { $b = Find-Battery $d.Name $batt }
         $list.Add([pscustomobject]@{
+            id        = $d.Id
             name      = $d.Name
             type      = Get-DeviceType $d.Name
             battery   = $b
             connected = [bool]$d.Connected
+            can_connect = $true
         })
     }
 
-    foreach ($n in @(Get-WinRtNames)) {
+    foreach ($winrt in @(Get-WinRtDevices)) {
+        if ($null -eq $winrt) { continue }
+        $n = Normalize-BtName $winrt.name
+        if (-not $n) { continue }
         $dup = $false
         foreach ($existing in $names) {
             if ($existing.IndexOf($n, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $n.IndexOf($existing, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $dup = $true; break }
@@ -490,26 +499,24 @@ function Get-BtDevices {
         if ($dup) { continue }
         $names.Add($n)
         $list.Add([pscustomobject]@{
+            id        = $winrt.id
             name      = $n
             type      = Get-DeviceType $n
             battery   = Find-Battery $n $batt
             connected = $true
+            can_connect = $false
         })
     }
 
     return $list.ToArray()
 }
 
-# The displayed name may come from WinRT while the controls hang off the audio
-# adapter's name, so fall back to the reference's contains-match.
-function Find-Connectable([string]$name, $audio) {
-    if (-not $name) { return $null }
+# Only audio devices have the topology control used below. Never match by name:
+# duplicate names are valid and the UI sends the stable device identity.
+function Find-Connectable([string]$id, $audio) {
+    if (-not $id) { return $null }
     foreach ($d in @($audio)) {
-        if ($d.Name -and $d.Name -eq $name) { return $d }
-    }
-    foreach ($d in @($audio)) {
-        $n = $d.Name
-        if ($n -and ($n.IndexOf($name, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or $name.IndexOf($n, [StringComparison]::OrdinalIgnoreCase) -ge 0)) { return $d }
+        if ($d.Id -and [string]::Equals($d.Id, $id, [StringComparison]::OrdinalIgnoreCase)) { return $d }
     }
     return $null
 }
@@ -526,23 +533,26 @@ function Invoke-Request($req) {
     elseif ($name -eq 'bt_connect' -or $name -eq 'bt_disconnect') {
         $connect = ($name -eq 'bt_connect')
         $verb = if ($connect) { 'connect' } else { 'disconnect' }
-        $devName = [string]$req.name
-        if (-not $devName) { return @{ ok = $false; error = 'missing device name' } }
+        $deviceId = [string]$req.id
+        if (-not $deviceId) { return @{ ok = $false; error = 'missing device id' } }
 
         $audio = [WinBt.BtConnect]::ScanSync()
         if ($null -eq $audio) { $audio = @() }
-        $target = Find-Connectable $devName $audio
+        $target = Find-Connectable $deviceId $audio
         if ($null -eq $target) {
-            return @{ ok = $false; error = "Not a connectable Bluetooth audio device: $devName"; devices = @(Get-BtDevices) }
+            $devices = @(Get-BtDevices)
+            $unsupported = $devices | Where-Object { [string]::Equals($_.id, $deviceId, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+            $error = if ($unsupported) { "Windows manages this Bluetooth device's connection: $($unsupported.name)" } else { 'Bluetooth device is no longer available' }
+            return @{ ok = $false; error = $error; devices = $devices }
         }
 
         $outcome = [WinBt.BtConnect]::SetSync($target.Id, $connect)
         if (-not $outcome.Accepted) {
-            return @{ ok = $false; error = "Could not $verb $devName"; devices = @(Get-BtDevices) }
+            return @{ ok = $false; error = "Could not $verb $($target.Name)"; devices = @(Get-BtDevices) }
         }
         $devices = @(Get-BtDevices)
         if (-not $outcome.Reached) {
-            return @{ ok = $false; error = "$devName did not $verb in time"; devices = $devices }
+            return @{ ok = $false; error = "$($target.Name) did not $verb in time"; devices = $devices }
         }
         return @{ ok = $true; devices = $devices }
     }

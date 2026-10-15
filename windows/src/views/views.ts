@@ -8,24 +8,28 @@ import { createThoughtLine } from "../ui/thoughtline";
 import { createSpringCheck, type SpringCheck } from "../ui/springcheck";
 import { squishSwitch } from "../ui/squishswitch";
 import { createSwipeToast, type SwipeToast } from "../ui/swipetoast";
-import { attachTabSegment } from "../ui/tabsegment";
 import { createSwipeRow } from "../ui/swiperow";
 import { Bridge } from "../core/bridge";
+import { canStartBluetoothAction, isCurrentBluetoothRequest } from "../core/bluetooth";
 import { prefersReduced } from "../core/anim";
 import { agentMeta } from "../core/agents";
+import { carouselAgents } from "../core/agent-carousel";
 import { diffForStep, diffStat, stepKind, baseName, type AgentStep, type StepKind } from "../core/steps";
 import { State, type AgentTask } from "../core/state";
-import { washRGBA, PIP_SAFE_INSET, type IslandViewName, type ViewGroup, type Wash } from "../core/layout";
+import { washRGBA, PIP_SAFE_INSET, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { react, setCondition } from "../mochi/reactions";
 import { createBatteryIcon, batteryWithLabel } from "../ui/batteryicon";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
+export { buildHeader } from "./header";
+import "./agent-workspace.css";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
   collapse(): void;
+  setAgentExpanded(expanded: boolean): void;
   setFocus(id: string): void;
   openTerminal(): void;
   /** The ↗ button: opens whatever the focused pill points at. */
@@ -87,118 +91,6 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
   return el;
 }
 
-// ── Tab groups ────────────────────────────────────────────────────────────────
-
-const GROUPS: { id: ViewGroup; label: string; views: IslandViewName[] }[] = [
-  { id: "home", label: "Home", views: ["dashboard"] },
-  { id: "agents", label: "Agents", views: [
-    "overview", "empty", "approval", "question", "error", "finished", "confused",
-    "upload", "uploading", "choose", "mail", "prompt", "searching", "result",
-    "note", "settings", "greeting",
-  ] },
-  { id: "media", label: "Media", views: ["media"] },
-  { id: "system", label: "System", views: ["controlCenter", "bluetooth", "stats"] },
-  { id: "tools", label: "Tools", views: ["pomodoro", "stopwatch", "weather"] },
-];
-
-function getViewsForGroup(group: ViewGroup): IslandViewName[] {
-  return GROUPS.find((g) => g.id === group)?.views ?? [];
-}
-
-function groupOfView(view: IslandViewName): ViewGroup {
-  return GROUPS.find((g) => g.views.includes(view))?.id ?? "agents";
-}
-
-function viewLabel(view: IslandViewName): string {
-  return view
-    .replace(/([A-Z])/g, " $1")
-    .split(" ")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-// ── Header ────────────────────────────────────────────────────────────────────
-
-export function buildHeader(actions: ViewActions): ViewHost {
-  const tabHome = h("button", { class: "tab", "aria-label": "Overview", title: "Overview", onclick: () => go("overview") }, svg(ICONS.house, 13));
-  const tabChat = h("button", { class: "tab", "aria-label": "Ask", title: "Ask", onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
-  const tabDrop = h("button", { class: "tab", "aria-label": "Drop", title: "Drop", onclick: () => go("upload") }, svg(ICONS.plus, 13));
-
-  const gearBtn = h("button", { "aria-label": "Settings", title: "Settings", onclick: () => go("settings") }, svg(ICONS.gear, 14));
-  const soundBtn = h("button", { "aria-label": State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds", "aria-pressed": String(!State.settings.soundEnabled), title: State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds", onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
-
-  function go(v: IslandViewName) {
-    actions.blip();
-    actions.setView(v);
-  }
-
-  const groupTabs = new Map<ViewGroup, HTMLElement>();
-  const groupsEl = h("div", { class: "tab-groups" });
-  for (const g of GROUPS) {
-    const tab = h("button", {
-      class: "tab-group",
-      text: g.label,
-      onclick: () => {
-        actions.blip();
-        State.setViewGroup(g.id);
-        if (!g.views.includes(State.view)) go(getViewsForGroup(g.id)[0]);
-      },
-    });
-    groupTabs.set(g.id, tab);
-    groupsEl.append(tab);
-  }
-  const setThumb = attachTabSegment(groupsEl);
-
-  const subPills = new Map<IslandViewName, HTMLElement>();
-  const pillsEl = h("div", { class: "sub-view-pills" });
-  for (const g of GROUPS) {
-    if (g.id === "agents") continue;
-    for (const v of g.views) {
-      const pill = h("button", { class: "sub-view-pill", text: viewLabel(v), onclick: () => go(v) });
-      subPills.set(v, pill);
-      pillsEl.append(pill);
-    }
-  }
-
-  const el = h(
-    "div",
-    { id: "header" },
-    h("div", { class: "tabs" }, tabHome, tabChat, tabDrop),
-    groupsEl,
-    pillsEl,
-    h("div", { class: "header-actions" }, gearBtn, soundBtn),
-  );
-
-  return {
-    el,
-    sync() {
-      const v = State.view;
-      tabHome.classList.toggle("on", v === "overview" || v === "empty");
-      tabChat.classList.toggle("on", v === "prompt");
-      tabDrop.classList.toggle("on", v === "upload");
-      gearBtn.classList.toggle("on", v === "settings");
-      clear(gearBtn);
-      gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
-      clear(soundBtn);
-      soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
-      soundBtn.title = State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds";
-      soundBtn.setAttribute("aria-label", State.settings.soundEnabled ? "Mute sounds" : "Unmute sounds");
-      soundBtn.setAttribute("aria-pressed", String(!State.settings.soundEnabled));
-      const group = groupOfView(v);
-      for (const [id, tab] of groupTabs) tab.classList.toggle("active", id === group);
-      setThumb(groupTabs.get(group)!);
-      pillsEl.style.display = group === "agents" ? "none" : "flex";
-      // Only the active group's pills: rendering all eight pushed the last
-      // four pills and the gear/sound buttons past the island's right edge.
-      for (const [pv, pill] of subPills) {
-        pill.style.display = groupOfView(pv) === group ? "" : "none";
-        pill.classList.toggle("active", pv === v);
-      }
-      el.style.opacity = v === "confused" ? "0" : "1";
-    },
-  };
-}
-
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 /** A pill whose card is the agent session view (VS Code + every agent_* pill). */
@@ -226,7 +118,7 @@ function stepKindIcon(kind: StepKind): Node {
     case "prompt":
       return svg(ICONS.arrowUp, 9);
     default:
-      return svg(ICONS.check, 9);
+      return h("span", { class: "step-glyph", text: "•" });
   }
 }
 
@@ -254,11 +146,22 @@ interface SessionView {
 function createSessionView(actions: ViewActions): SessionView {
   const whoDot = dot("var(--accent)", 7);
   const whoName = h("span", { class: "name" });
+  const provider = h("span", { class: "session-provider" });
   const thought = createThoughtLine();
+  const stepPreview = h("span", { class: "session-step-preview" });
   const modelChip = h("span", { class: "chip" });
   const thinkChip = h("span", { class: "chip" });
   const whoCount = h("span", { class: "count" });
-  const head = h("div", { class: "session-head" }, whoDot, whoName, thought.el, modelChip, thinkChip, whoCount);
+  const expand = h("button", {
+    class: "session-expand",
+    type: "button",
+    "aria-label": "Expand agent session",
+    title: "Expand agent session",
+    onclick: () => actions.setAgentExpanded(true),
+  }, svg(ICONS.chevronRight, 11, { stroke: 2 }));
+  const head = h("div", {
+    class: "session-head agent-main-trigger",
+  }, whoDot, whoName, provider, thought.el, stepPreview, modelChip, thinkChip, whoCount, expand);
 
   const approvalCmd = h("div", { class: "cmd-line" });
   const approvalNote = h("div", { class: "session-note" });
@@ -268,17 +171,25 @@ function createSessionView(actions: ViewActions): SessionView {
   const rail = h("div", { class: "step-rail" });
   const viewer = h("div", { class: "step-view" });
 
-  const el = h("div", { class: "session" }, head, approval, rail, viewer);
+  const work = h("div", { class: "session-work" }, approval, viewer);
+  const el = h("div", { class: "session" }, head, rail, work);
 
   let taskId: string | null = null;
+  let currentTask: AgentTask | null = null;
   let selected = 0;
   let picked = false;
+  let selectedStep: AgentStep | null = null;
+  let selectedStepKey = "";
+  const selectionByTask = new Map<string, { selected: number; picked: boolean; step: AgentStep | null; key: string }>();
+  const scrollByStep = new Map<string, number>();
   let railKey = "";
   let viewKey = "";
   let approvalKey = "";
 
   const stepAt = (task: AgentTask, i: number): AgentStep =>
     task.stepDetails[i] ?? { label: task.steps[i] ?? "", tool: "" };
+
+  const stepKey = (step: AgentStep): string => `${step.label}|${step.tool}|${JSON.stringify(step.input ?? null)}`;
 
   function syncRail() {
     const chips = rail.children;
@@ -287,8 +198,10 @@ function createSessionView(actions: ViewActions): SessionView {
   function renderViewer(task: AgentTask, i: number) {
     const detail = stepAt(task, i);
     const kind = stepKind(detail);
-    const key = `${task.id}|${i}|${task.steps.length}|${detail.label}|${detail.tool}`;
+    const key = `${task.id}|${stepKey(detail)}`;
     if (key === viewKey) return;
+    const oldBody = viewer.querySelector<HTMLElement>(".diff-body");
+    if (oldBody && viewKey) scrollByStep.set(viewKey, oldBody.scrollTop);
     viewKey = key;
     clear(viewer);
 
@@ -313,17 +226,19 @@ function createSessionView(actions: ViewActions): SessionView {
           ),
         ),
       );
+      const body = viewer.querySelector<HTMLElement>(".diff-body");
+      if (body) body.scrollTop = scrollByStep.get(key) ?? 0;
       return;
     }
 
     if (kind === "bash") {
       const command = str(detail.input, "command") ?? detail.label;
-      viewer.append(
-        h("div", { class: "cmd-block" },
-          h("span", { class: "cmd-prompt", text: "❯" }),
-          h("span", { class: "cmd-text", text: command }),
-        ),
-      );
+      const output = str(detail.input, "output") ?? str(detail.input, "stdout") ?? str(detail.input, "stderr");
+      viewer.append(h("div", { class: "cmd-block" },
+        h("span", { class: "cmd-prompt", text: "❯" }),
+        h("span", { class: "cmd-text", text: command }),
+      ));
+      if (output) viewer.append(h("pre", { class: "cmd-output", text: output }));
       return;
     }
 
@@ -331,12 +246,12 @@ function createSessionView(actions: ViewActions): SessionView {
     const target =
       str(detail.input, "path") ?? str(detail.input, "file_path") ??
       str(detail.input, "url") ?? str(detail.input, "query") ?? str(detail.input, "pattern");
-    viewer.append(
-      h("div", { class: "step-plain" },
-        h("span", { class: "step-plain-label", text: detail.label }),
-        target ? h("span", { class: "step-plain-target", text: target }) : null,
-      ),
-    );
+    const output = str(detail.input, "output") ?? str(detail.input, "content") ?? str(detail.input, "result");
+    viewer.append(h("div", { class: "step-plain" },
+      h("span", { class: "step-plain-label", text: detail.label }),
+      target ? h("span", { class: "step-plain-target", text: target, title: target }) : null,
+    ));
+    if (output && !diff) viewer.append(h("pre", { class: "step-output", text: output }));
   }
   return {
     el,
@@ -346,15 +261,32 @@ function createSessionView(actions: ViewActions): SessionView {
     update(task: AgentTask) {
       const focusChanged = task.id !== taskId;
       if (focusChanged) {
+        if (taskId && currentTask) {
+          const previous = selectedStep ?? stepAt(currentTask, selected);
+          selectionByTask.set(taskId, { selected, picked, step: previous, key: selectedStepKey || stepKey(previous) });
+        }
         taskId = task.id;
-        selected = 0;
-        picked = false;
+        currentTask = task;
+        const saved = selectionByTask.get(task.id);
+        selected = saved?.selected ?? 0;
+        selectedStep = saved?.step ?? null;
+        selectedStepKey = saved?.key ?? "";
+        if (saved?.step) {
+          const byObject = task.stepDetails.indexOf(saved.step);
+          const byKey = task.stepDetails.findIndex((step) => stepKey(step) === saved.key);
+          if (byObject >= 0) selected = byObject;
+          else if (byKey >= 0) selected = byKey;
+        }
+        picked = saved?.picked ?? false;
         railKey = "";
+        const oldBody = viewer.querySelector<HTMLElement>(".diff-body");
+        if (oldBody && viewKey) scrollByStep.set(viewKey, oldBody.scrollTop);
         viewKey = "";
         approvalKey = "";
       }
       whoDot.style.background = task.color;
       whoName.textContent = task.id === "integration_claude" ? "VS Code" : task.name;
+      provider.textContent = task.id === "integration_claude" ? "Claude Code" : agentMeta(task.id.slice("agent_".length)).name;
       modelChip.textContent = task.model ?? "";
       modelChip.style.display = task.model ? "" : "none";
       thinkChip.textContent = task.thinking ?? "";
@@ -367,18 +299,21 @@ function createSessionView(actions: ViewActions): SessionView {
 
       // Rail — rebuilt only when the step set changes; the selected chip is
       // the newest step until the user clicks one.
-      const key = task.steps.join("|");
+      const key = `${task.state}|${task.steps.map((label, i) => stepKey(task.stepDetails[i] ?? { label, tool: "" })).join("|")}`;
       if (key !== railKey) {
         railKey = key;
         clear(rail);
         task.steps.forEach((_, i) => {
           const detail = stepAt(task, i);
           rail.append(h("button", {
-            class: "step-chip",
+            class: `step-chip step-chip--${stepKind(detail)}`,
             title: detail.label,
             onclick: () => {
               picked = true;
               selected = i;
+              selectedStep = detail;
+              selectedStepKey = stepKey(detail);
+              selectionByTask.set(task.id, { selected, picked, step: detail, key: stepKey(detail) });
               syncRail();
               renderViewer(task, i);
             },
@@ -387,8 +322,24 @@ function createSessionView(actions: ViewActions): SessionView {
             h("span", { class: "step-chip-label", text: detail.label }),
           ));
         });
+        if (task.state === "finished") {
+          rail.append(h("span", { class: "step-status done", "aria-label": "Done" }, svg(ICONS.check, 9), h("span", { text: "Done" })));
+        }
       }
-      if (!picked) selected = Math.min(task.stepIndex, Math.max(0, task.steps.length - 1));
+      if (picked && selectedStep) {
+        const byObject = task.stepDetails.indexOf(selectedStep);
+        const byKey = task.stepDetails.findIndex((step) => stepKey(step) === selectedStepKey);
+        if (byObject >= 0) selected = byObject;
+        else if (byKey >= 0) selected = byKey;
+      } else if (!picked) {
+        selected = Math.min(task.stepIndex, Math.max(0, task.steps.length - 1));
+      }
+      selected = Math.max(0, Math.min(selected, Math.max(0, task.steps.length - 1)));
+      const currentStep = task.steps.length > 0 ? stepAt(task, selected) : null;
+      selectedStep = currentStep;
+      selectedStepKey = currentStep ? stepKey(currentStep) : "";
+      stepPreview.textContent = currentStep?.label ?? "Waiting for the first step…";
+      stepPreview.title = stepPreview.textContent;
       syncRail();
       if (task.steps.length > 0) renderViewer(task, selected);
       else {
@@ -402,7 +353,8 @@ function createSessionView(actions: ViewActions): SessionView {
       const mine = pending != null && pending.taskId === task.id;
       const allows = taskAllowsApproval(task);
       const aKey = `${pending?.requestId ?? ""}|${allows}`;
-      approval.style.display = mine ? "" : "none";
+      approval.style.display = mine ? "block" : "none";
+      el.classList.toggle("has-approval", mine);
       if (mine && aKey !== approvalKey) {
         approvalKey = aKey;
         approvalCmd.textContent = pending.command || pending.tool;
@@ -433,8 +385,14 @@ function buildOverview(actions: ViewActions): ViewHost {
     { class: "icon-btn jump", "aria-label": "Open", title: "Open", onclick: () => actions.openTarget() },
     svg(ICONS.arrowUpRight, 8),
   );
-  const left = card(null, leftBody, jump);
-  const pills = h("div", { class: "pills" });
+  const collapse = h("button", {
+    class: "agent-collapse",
+    type: "button",
+    text: "Back to agents",
+    onclick: () => actions.setAgentExpanded(false),
+  });
+  const left = card(null, leftBody, jump, collapse);
+  const pills = h("div", { class: "pills agent-pills" });
   const right = card(null, pills);
 
   const el = h("div", { class: "view overview" },
@@ -442,11 +400,18 @@ function buildOverview(actions: ViewActions): ViewHost {
     h("div", { class: "right" }, right),
   );
 
+  left.addEventListener("click", (event) => {
+    if (State.agentExpanded || !State.focusTask || !isAgentTask(State.focusTask)) return;
+    if (event.target instanceof Element && event.target.closest("button, a, input, textarea, select")) return;
+    actions.setAgentExpanded(true);
+  });
+
   let pillIds = "";
   let detailOpen = false;
   let lastFocus: string | null = null;
   let mode: "session" | "card" | null = null;
   let cardKey = "";
+  let wasExpanded = false;
 
   const hooks: IntegrationCardHooks = {
     get detailOpen() {
@@ -486,8 +451,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       // its own card, exactly like IntegrationCardView.
       const sessionActive =
         task != null &&
-        isAgentTask(task) &&
-        (task.state !== "idle" || task.steps.length > 0 || !!task.model);
+        isAgentTask(task);
 
       if (task && sessionActive) {
         if (mode !== "session") {
@@ -514,18 +478,21 @@ function buildOverview(actions: ViewActions): ViewHost {
 
       jump.style.display = detailOpen ? "none" : "";
 
-      // A live session is the whole point of the view: collapse the pills card
-      // so it gets the full island width. Idle/finished → pills come back on
-      // the next sync (no manual toggle anywhere).
-      const live =
-        mode === "session" &&
-        task != null &&
-        task.state !== "idle" &&
-        task.state !== "finished";
-      el.classList.toggle("solo", live);
+      el.classList.toggle("agent-detail", State.agentExpanded);
+      el.classList.toggle("agent-carousel", !State.agentExpanded);
+      collapse.style.display = State.agentExpanded ? "" : "none";
+      if (State.agentExpanded !== wasExpanded) {
+        if (sessionActive) {
+          if (State.agentExpanded) collapse.focus({ preventScroll: true });
+          else if (el.contains(document.activeElement)) session.el.querySelector<HTMLElement>(".session-expand")?.focus({ preventScroll: true });
+        }
+        wasExpanded = State.agentExpanded;
+      }
 
-      const others = State.otherTasks.slice(0, 4);
-      const pillKey = others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|");
+      // The carousel is intentionally an agent switcher, not an integrations
+      // catalog: VS Code, OpenCode and Hermes are the only standing pills.
+      const others = carouselAgents(State.tasks, State.focusId);
+      const pillKey = `${State.focusId}|${others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|")}`;
       if (pillKey !== pillIds) {
         pillIds = pillKey;
         clear(pills);
@@ -541,7 +508,16 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
   const canvas = createMiniBot(task, 24);
   const pill = h(
     "button",
-    { class: "pill", type: "button", "aria-label": label, onclick: () => actions.setFocus(task.id) },
+    {
+      class: "pill agent-pill",
+      type: "button",
+      "aria-label": `Expand ${label} agent session`,
+      "aria-current": State.focusId === task.id ? "true" : "false",
+      onclick: () => {
+        actions.setFocus(task.id);
+        actions.setAgentExpanded(true);
+      },
+    },
     canvas,
     h("span", { class: "lbl", text: label }),
   );
@@ -1337,13 +1313,14 @@ const BT_ICONS: Record<string, string> = {
 /** The device a connect/disconnect is in flight for — the worker can take ~14 s. */
 let btPending = "";
 let btError = "";
+let btRefreshRequest = 0;
 
-async function toggleBt(name: string, connected: boolean) {
-  if (btPending) return;
-  btPending = name;
+async function toggleBt(id: string, connected: boolean) {
+  if (!canStartBluetoothAction(btPending, id)) return;
+  btPending = id;
   btError = "";
   State.notify();
-  const res = connected ? await Bridge.btDisconnect(name) : await Bridge.btConnect(name);
+  const res = connected ? await Bridge.btDisconnect(id) : await Bridge.btConnect(id);
   btPending = "";
   if (res && !res.ok) btError = res.error ?? "That didn't work.";
   // Success lands through the bt-devices / bt-device-event listeners.
@@ -1351,15 +1328,16 @@ async function toggleBt(name: string, connected: boolean) {
 }
 
 async function seedBluetooth() {
+  const request = ++btRefreshRequest;
   const res = await Bridge.getBtDevices();
-  if (res?.devices) {
+  if (isCurrentBluetoothRequest(request, btRefreshRequest) && res?.devices) {
     State.bluetooth.devices = res.devices;
     State.notify();
   }
 }
 
 /** Seeds on open like the control center: external changes emit no events.
- *  Rows are built once and patched, keyed by device name: a rebuild on every
+ *  Rows are built once and patched, keyed by stable device id: a rebuild on every
  *  notify would replay the row-in animation every 2 s (system-stats) while the
  *  user is reading the list. */
 function buildBluetoothView(): ViewHost {
@@ -1392,7 +1370,7 @@ function buildBluetoothView(): ViewHost {
     ),
   );
 
-  /** What the row's button acts on — the current connected flag for that name. */
+  /** What the row's button acts on — the current connected flag for that stable id. */
   const connected = new Map<string, boolean>();
   const rows = new Map<
     string,
@@ -1407,13 +1385,13 @@ function buildBluetoothView(): ViewHost {
   >();
   let key = "";
 
-  const buildRow = (name: string, index: number) => {
+  const buildRow = (id: string, index: number) => {
     const icon = h("span", { class: "bt-icon" });
     const label = h("span", { class: "bt-name" });
     const battery = h("span", { class: "bt-battery" });
     const btn = h("button", {
       class: "bt-btn",
-      onclick: () => void toggleBt(name, connected.get(name) ?? false),
+      onclick: () => void toggleBt(id, connected.get(id) ?? false),
     });
     const row = h(
       "div",
@@ -1430,7 +1408,7 @@ function buildBluetoothView(): ViewHost {
     el,
     sync() {
       const devices = State.bluetooth.devices;
-      const next = devices.map((d) => d.name).join("\u0000");
+      const next = devices.map((d) => d.id).join("\u0000");
       const changed = next !== key;
       key = next;
 
@@ -1444,13 +1422,13 @@ function buildBluetoothView(): ViewHost {
       const order: HTMLElement[] = [];
       const alive = new Set<string>();
       devices.forEach((d, i) => {
-        alive.add(d.name);
-        let row = rows.get(d.name);
-        if (row == null) {
-          row = buildRow(d.name, i);
-          rows.set(d.name, row);
-        }
-        const pending = btPending === d.name;
+         alive.add(d.id);
+         let row = rows.get(d.id);
+         if (row == null) {
+           row = buildRow(d.id, i);
+           rows.set(d.id, row);
+         }
+         const pending = btPending === d.id;
         row.icon.textContent = BT_ICONS[d.type] ?? "•";
         row.name.textContent = d.name;
         // A paired device reports its own charge (or −1 when it doesn't): same
@@ -1471,25 +1449,28 @@ function buildBluetoothView(): ViewHost {
           row.icon3 = null;
         }
         row.el.classList.toggle("on", d.connected);
-        row.btn.disabled = btPending !== "" && !pending;
-        row.btn.classList.toggle("pending", pending);
-        row.btn.textContent = pending
-          ? d.connected
+         row.btn.disabled = !d.can_connect || (btPending !== "" && !pending);
+         row.btn.classList.toggle("pending", pending);
+         row.btn.title = d.can_connect ? "" : "Windows manages this device's connection";
+         row.btn.textContent = !d.can_connect
+           ? "Windows manages"
+           : pending
+           ? d.connected
             ? "Disconnecting…"
             : "Connecting…"
           : d.connected
             ? "Disconnect"
             : "Connect";
-        connected.set(d.name, d.connected);
+         connected.set(d.id, d.connected);
         order.push(row.el);
       });
 
       if (!changed) return;
-      for (const [name, row] of rows) {
-        if (!alive.has(name)) {
-          row.el.remove();
-          rows.delete(name);
-          connected.delete(name);
+       for (const [id, row] of rows) {
+         if (!alive.has(id)) {
+           row.el.remove();
+           rows.delete(id);
+           connected.delete(id);
         }
       }
       // Reposition only what actually moved: a row already in place keeps its
@@ -1840,7 +1821,7 @@ export function buildViews(
   map.set("note", buildNote());
   map.set("settings", buildSettings(actions));
   map.set("prompt", buildPrompt(onChatHeightChange));
-  map.set("upload", buildUpload());
+  map.set("upload", buildUpload(actions));
   map.set("uploading", buildUploading());
   map.set("choose", buildChoose(actions));
   // Not in the Windows v1: sending a file by email, window attach + web result.

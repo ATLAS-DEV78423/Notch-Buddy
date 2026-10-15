@@ -41,6 +41,7 @@ const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
 /// see for nearly two minutes.
 const ACK_TIMEOUT: Duration = Duration::from_millis(800);
 const MAX_PAYLOAD: usize = 1 << 20;
+const MAX_PENDING_REQUESTS: usize = 64;
 
 /// What the island can say about a permission request.
 pub enum Reply {
@@ -55,6 +56,10 @@ pub enum Reply {
 /// Permission requests the island has been told about.
 #[derive(Default)]
 pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
+
+fn pending_capacity_available(count: usize) -> bool {
+    count < MAX_PENDING_REQUESTS
+}
 
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -215,9 +220,22 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
 
     let id = format!("{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed));
     let (tx, mut rx) = mpsc::channel::<Reply>(4);
-    {
+    let accepted = {
         let pending = app.state::<Pending>();
-        pending.0.lock().unwrap().insert(id.clone(), tx);
+        let mut map = pending.0.lock().unwrap();
+        if pending_capacity_available(map.len()) {
+            map.insert(id.clone(), tx);
+            true
+        } else {
+            false
+        }
+    };
+    if !accepted {
+        log::line(format!("hook id={id} declined — pending request limit reached"));
+        let _ = pipe.write_all(b"deny\n").await;
+        let _ = pipe.flush().await;
+        pipe.finish();
+        return;
     }
     payload["request_id"] = json!(id);
     log::line(format!("hook PermissionRequest id={id}"));
@@ -343,5 +361,16 @@ mod tests {
             );
             drop(client);
         });
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    #[test]
+    fn pending_request_limit_rejects_new_entries() {
+        assert!(pending_capacity_available(0));
+        assert!(!pending_capacity_available(MAX_PENDING_REQUESTS));
     }
 }

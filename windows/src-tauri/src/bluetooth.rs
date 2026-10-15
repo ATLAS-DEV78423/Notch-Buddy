@@ -7,6 +7,7 @@
 // back as a friendly error instead of taking the app down.
 
 use serde::Serialize;
+use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use crate::island::WINDOW_LABEL;
@@ -15,12 +16,15 @@ use crate::island::WINDOW_LABEL;
 /// "speaker", …, or "" when nothing matches), detected from the name.
 #[derive(Serialize, Clone)]
 pub struct BtDevice {
+    pub id: String,
     pub name: String,
     #[serde(rename = "type")]
     pub kind: String,
     /// -1 when the device is disconnected or reports no level.
     pub battery: i32,
     pub connected: bool,
+    /// Windows exposes the reconnect operation only for audio endpoints.
+    pub can_connect: bool,
 }
 
 /// The `get_bt_devices` payload.
@@ -38,13 +42,31 @@ pub struct BtAction {
 }
 
 /// `bt-device-event`: a connect or disconnect this app asked for and the
-/// worker saw land. External changes are not watched — see the worker's header.
+/// worker saw land. The stable id prevents a delayed event hitting a renamed
+/// or duplicate-name row. External changes are not watched.
 #[derive(Serialize, Clone)]
 pub struct BtDeviceEvent {
     #[serde(rename = "type")]
     pub kind: &'static str,
+    pub id: String,
     pub name: String,
     pub battery: i32,
+    pub connected: bool,
+}
+
+fn parse_device(value: &Value) -> Option<BtDevice> {
+    Some(BtDevice {
+        id: value["id"].as_str()?.to_string(),
+        name: value["name"].as_str()?.to_string(),
+        kind: value["type"].as_str().unwrap_or("").to_string(),
+        battery: value["battery"].as_i64().unwrap_or(-1) as i32,
+        connected: value["connected"].as_bool().unwrap_or(false),
+        can_connect: value["can_connect"].as_bool().unwrap_or(false),
+    })
+}
+
+fn event_is_current(id: &str, connected: bool, device: &BtDevice) -> bool {
+    device.id == id && device.connected == connected
 }
 
 /// The worker round-trip is blocking I/O; Tauri's async runtime must not pay
@@ -67,7 +89,7 @@ mod imp {
 
     use serde_json::{json, Value};
 
-    use super::{BtAction, BtDevices, BtDevice};
+    use super::{parse_device, BtAction, BtDevices};
 
     /// The first command also pays for the PowerShell start-up, the C#
     /// compile (Add-Type) and the first WinRT query, so it gets a wider
@@ -222,12 +244,7 @@ mod imp {
         let devices = list
             .iter()
             .filter_map(|d| {
-                Some(BtDevice {
-                    name: d["name"].as_str()?.to_string(),
-                    kind: d["type"].as_str().unwrap_or("").to_string(),
-                    battery: d["battery"].as_i64().unwrap_or(-1) as i32,
-                    connected: d["connected"].as_bool().unwrap_or(false),
-                })
+                parse_device(d)
             })
             .collect();
         Ok(BtDevices { devices })
@@ -240,9 +257,9 @@ mod imp {
     /// A connect attempt never rejects: the caller always gets `{ ok, error? }`,
     /// plus the fresh device list when the worker answered, so the events below
     /// can show what changed.
-    pub fn set(name: String, connect: bool) -> (BtAction, Option<BtDevices>) {
+    pub fn set(id: String, connect: bool) -> (BtAction, Option<BtDevices>) {
         let cmd = if connect { "bt_connect" } else { "bt_disconnect" };
-        let response = match ask(json!({ "cmd": cmd, "name": name })) {
+        let response = match ask(json!({ "cmd": cmd, "id": id })) {
             Ok(value) => value,
             Err(err) => {
                 return (
@@ -316,7 +333,7 @@ mod imp {
         Err(unsupported())
     }
 
-    pub fn set(_name: String, _connect: bool) -> (BtAction, Option<BtDevices>) {
+    pub fn set(_id: String, _connect: bool) -> (BtAction, Option<BtDevices>) {
         (
             BtAction {
                 ok: false,
@@ -333,17 +350,17 @@ pub async fn get_bt_devices() -> Result<BtDevices, String> {
 }
 
 #[tauri::command]
-pub async fn bt_connect(app: AppHandle, name: String) -> Result<BtAction, String> {
-    let wanted = name.clone();
-    let (action, devices) = blocking(move || Ok(imp::set(name, true))).await?;
+pub async fn bt_connect(app: AppHandle, id: String) -> Result<BtAction, String> {
+    let wanted = id.clone();
+    let (action, devices) = blocking(move || Ok(imp::set(id, true))).await?;
     report(&app, &wanted, true, &action, devices);
     Ok(action)
 }
 
 #[tauri::command]
-pub async fn bt_disconnect(app: AppHandle, name: String) -> Result<BtAction, String> {
-    let wanted = name.clone();
-    let (action, devices) = blocking(move || Ok(imp::set(name, false))).await?;
+pub async fn bt_disconnect(app: AppHandle, id: String) -> Result<BtAction, String> {
+    let wanted = id.clone();
+    let (action, devices) = blocking(move || Ok(imp::set(id, false))).await?;
     report(&app, &wanted, false, &action, devices);
     Ok(action)
 }
@@ -352,7 +369,7 @@ pub async fn bt_disconnect(app: AppHandle, name: String) -> Result<BtAction, Str
 /// `bt-device-event`; only a change that actually landed gets an event.
 fn report(
     app: &AppHandle,
-    name: &str,
+    id: &str,
     connect: bool,
     action: &BtAction,
     devices: Option<BtDevices>,
@@ -365,19 +382,54 @@ fn report(
     if !action.ok {
         return;
     }
-    let battery = list
-        .devices
-        .iter()
-        .find(|d| d.name == name)
-        .map(|d| d.battery)
-        .unwrap_or(-1);
+    let Some(device) = list.devices.iter().find(|d| d.id == id) else {
+        return;
+    };
     let _ = app.emit_to(
         WINDOW_LABEL,
         "bt-device-event",
         &BtDeviceEvent {
             kind: if connect { "connected" } else { "disconnected" },
-            name: name.to_string(),
-            battery,
+            id: id.to_string(),
+            name: device.name.clone(),
+            battery: device.battery,
+            connected: device.connected,
         },
     );
+}
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_stable_identity_and_unsupported_capability() {
+        let device = parse_device(&json!({
+            "id": "bth://mouse/42",
+            "name": "Mouse",
+            "type": "mouse",
+            "battery": 80,
+            "connected": true,
+            "can_connect": false
+        })).expect("valid device fixture");
+        assert_eq!(device.id, "bth://mouse/42");
+        assert!(!device.can_connect);
+        assert!(parse_device(&json!({ "name": "name-only" })).is_none());
+    }
+
+    #[test]
+    fn stale_event_requires_stable_id_and_refreshed_state() {
+        let device = BtDevice {
+            id: "bth://headphones/7".into(),
+            name: "Headphones".into(),
+            kind: "headphones".into(),
+            battery: 50,
+            connected: true,
+            can_connect: true,
+        };
+        assert!(event_is_current(&device.id, true, &device));
+        assert!(!event_is_current("bth://old", false, &device));
+        assert!(!event_is_current(&device.id, false, &device));
+    }
 }

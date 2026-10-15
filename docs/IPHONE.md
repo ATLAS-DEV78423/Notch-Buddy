@@ -49,7 +49,7 @@ Nothing shows up? See [Troubleshooting](#troubleshooting).
 
 - Your sessions go from your Mac to **your own private iCloud database**, and from there to your iPhone. Project names, commands, paths, questions and turns are encrypted with your iCloud keys.
 - **No API key ever leaves your Mac.** The services screen shows what your Mac read; actions are run by your Mac.
-- The Live Activity goes through a small relay ([`relay/`](../relay/)) that holds Apple's push key. It only sees the agent's name and state, never a project name, a command or a path, and it stores and logs nothing.
+- The Live Activity goes through a small relay ([`relay/`](../relay/)) that holds Apple's push key. It only sees the agent's name and state, never a project name, a command or a path, and it stores and logs nothing. Each Mac install generates a 32-byte relay secret in its Keychain and signs every request with a timestamp, nonce and HMAC. The secret stays on the Mac; the existing encrypted `PhoneToken` CloudKit record delivers only the iPhone's APNs tokens, so no new pairing backend is needed.
 - No account, no analytics. Turning the iPhone switch off on the Mac deletes your sessions from iCloud.
 
 Details in the [privacy policy](https://louis-cfm.github.io/coucou/privacy.html).
@@ -90,7 +90,7 @@ To run it from source on your own iPhone, the Mac app and the iPhone app have to
 2. In `NotchBuddy/project.yml`, set `bundleIdPrefix` and every `DEVELOPMENT_TEAM` to yours.
 3. Replace `iCloud.fr.louisraille.Coucou` with your own container (for example `iCloud.com.you.Coucou`) everywhere it appears: the `.entitlements` files in `NotchBuddy/Resources` and the Swift files under `Sources/App/PhoneLink` and `Sources/Phone` (`grep -rn "iCloud.fr.louisraille.Coucou" NotchBuddy`).
 4. Create the container in the [CloudKit console](https://icloud.developer.apple.com/) and run both apps once in Debug: the record types are created in the Development environment.
-5. For the Live Activity, deploy your own relay with your APNs key ([`relay/README.md`](../relay/README.md)), set `APNS_TOPIC` in `relay/wrangler.toml` to your iPhone app's bundle ID followed by `.push-type.liveactivity`, and put your relay's address in `LiveActivityRelay.defaultRelayURL`.
+5. For the Live Activity, deploy your own relay with your APNs key ([`relay/README.md`](../relay/README.md)), set `APNS_TOPIC` in `relay/wrangler.toml` to your iPhone app's bundle ID followed by `.push-type.liveactivity`, and put your relay's address in `LiveActivityRelay.defaultRelayURL`. The Mac creates its per-install relay secret automatically in the Keychain; do not add it to CloudKit, the iPhone app, or Worker secrets.
 6. Build:
    ```bash
    cd NotchBuddy

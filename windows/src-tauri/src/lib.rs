@@ -306,6 +306,11 @@ fn ingest_file(path: String) -> Result<DroppedFile, String> {
     files::ingest(&path)
 }
 
+#[tauri::command]
+fn file_exists(path: String) -> bool {
+    files::validate_inbox_file(&path)
+}
+
 /// The island may only ask whether a key exists — never read it.
 #[tauri::command]
 fn secret_present(key: String) -> bool {
@@ -410,7 +415,13 @@ fn open_settings_window(app: AppHandle) {
 
 pub fn run() {
     platform::prepare_environment();
-    let loaded = settings::load();
+    let loaded = match settings::load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            log::line(format!("settings were not loaded: {error}"));
+            Settings::default()
+        }
+    };
     let gate = Arc::new(PollGate::new());
 
     tauri::Builder::default()
@@ -450,6 +461,7 @@ pub fn run() {
             chat_send,
             chat_reset,
             ingest_file,
+            file_exists,
             secret_present,
             secret_set,
             secret_clear,

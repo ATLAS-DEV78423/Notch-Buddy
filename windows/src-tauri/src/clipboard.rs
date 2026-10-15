@@ -33,15 +33,16 @@ mod imp {
 
     /// Reads the clipboard as text. OpenClipboard can fail whenever another
     /// app holds it — that is a normal race, not an error worth reporting.
+    /// `Err` retries a busy clipboard; `Ok(None)` consumes non-text formats.
     /// Every path out closes the clipboard again.
-    fn read_text() -> Option<String> {
+    fn read_text() -> Result<Option<String>, ()> {
         unsafe {
             if OpenClipboard(None).is_err() {
-                return None;
+                return Err(());
             }
             let text = read_text_open();
             let _ = CloseClipboard();
-            text
+            Ok(text)
         }
     }
 
@@ -90,24 +91,30 @@ mod imp {
             let mut last_seq = 0u32;
             let mut last_text = String::new();
             loop {
-                gate.wait_until_active();
-                while gate.is_active() {
+                let generation = gate.wait_until_active();
+                while gate.is_current(generation) {
                     let seq = unsafe { GetClipboardSequenceNumber() };
                     if seq != last_seq {
-                        last_seq = seq;
-                        if let Some(text) = read_text() {
-                            if !text.is_empty() && text != last_text {
-                                last_text = text;
-                                if is_url(&last_text) {
-                                    let _ = app
-                                        .emit_to(WINDOW_LABEL, "clipboard-url", ClipboardUrl {
-                                            url: last_text.clone(),
-                                        });
+                        if let Ok(text) = read_text() {
+                            if !gate.is_current(generation) {
+                                break;
+                            }
+                            // A busy clipboard must retry, not consume its sequence.
+                            last_seq = seq;
+                            if let Some(text) = text {
+                                if !text.is_empty() && text != last_text {
+                                    last_text = text;
+                                    if is_url(&last_text) {
+                                        let _ = app
+                                            .emit_to(WINDOW_LABEL, "clipboard-url", ClipboardUrl {
+                                                url: last_text.clone(),
+                                            });
+                                    }
                                 }
                             }
                         }
                     }
-                    std::thread::sleep(Duration::from_secs(1));
+                    if !gate.wait_interval(generation, Duration::from_secs(1)) { break; }
                 }
             }
         });

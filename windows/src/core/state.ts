@@ -5,6 +5,7 @@ import type { EyeShape } from "../mochi/engine";
 import { agentMeta } from "./agents";
 import type { AgentStep } from "./steps";
 import { Sound } from "./sound";
+import { ShelfStore, shelfAttachment, type ShelfFile, type ShelfItem } from "./file-shelf";
 
 /** Durations the briefs fix: focus counts down from 25 min, break from 5 min. */
 export const FOCUS_SECONDS = 25 * 60;
@@ -172,6 +173,8 @@ class AppState {
 
   tasks: AgentTask[] = [];
   focusId: string | null = null;
+  /** The promoted agent is showing its full session surface instead of the carousel. */
+  agentExpanded = false;
 
   stateOverride: BotStateName | null = null;
 
@@ -193,10 +196,13 @@ class AppState {
 
   uploadProgress = 0;
   uploadDuration = 2.4;
+  uploadingName: string | null = null;
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
   droppedFile: { name: string; path: string } | null = null;
+  shelf = new ShelfStore();
+  shelfOpen = false;
   noteMessage: string | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
@@ -212,7 +218,7 @@ class AppState {
   stats: SystemStats = { cpu: 0, ram: 0, netRx: 0, netTx: 0 };
   volume: { level: number; muted: boolean } = { level: 0, muted: false };
   brightness: { level: number } = { level: 0 };
-  bluetooth: { devices: Array<{ name: string; type: string; battery: number; connected: boolean }> } = { devices: [] };
+  bluetooth: { devices: Array<{ id: string; name: string; type: string; battery: number; connected: boolean; can_connect: boolean }> } = { devices: [] };
   battery: { level: number; charging: boolean; timeRemaining: number; known?: boolean; lowPower?: boolean } = { level: 100, charging: false, timeRemaining: 0, known: false };
   /** Last confirmed results from the native toggles; not guessed from localStorage. */
   systemControls = { dnd: false, nightLight: false };
@@ -488,6 +494,56 @@ class AppState {
     this.notify();
   }
 
+  setAgentExpanded(expanded: boolean) {
+    if (this.agentExpanded === expanded) return;
+    this.agentExpanded = expanded;
+    this.notify();
+  }
+
+  addShelfItem(file: ShelfFile): ShelfItem {
+    const item = this.shelf.add(file);
+    this.notify();
+    return item;
+  }
+
+  addShelfError(name: string, sourcePath: string, error: string): ShelfItem {
+    const item = this.shelf.addError(name, sourcePath, error);
+    this.notify();
+    return item;
+  }
+
+  replaceShelfItem(id: string, file: ShelfFile): ShelfItem | null {
+    const item = this.shelf.replace(id, file);
+    this.notify();
+    return item;
+  }
+
+  selectShelfItem(id: string | null): ShelfItem | null {
+    const item = this.shelf.select(id);
+    this.notify();
+    return item;
+  }
+
+  removeShelfItem(id: string) {
+    this.shelf.remove(id);
+    this.notify();
+  }
+
+  clearShelf() {
+    this.shelf.clear();
+    this.notify();
+  }
+
+  attachSelectedShelfItem(): boolean {
+    const attachment = shelfAttachment(this.shelf.selected);
+    if (!attachment) return false;
+    this.noteMessage = null;
+    this.droppedFile = { name: attachment.name, path: attachment.path };
+    this.promptContext = attachment;
+    this.notify();
+    return true;
+  }
+
   // ── Timer: focus / break count down, stopwatch counts up — one machine ─────
 
   /** What the current mode's Reset rewinds to (stopwatch starts at 0). */
@@ -523,14 +579,14 @@ class AppState {
     }
   }
 
-  /** The single 1 s tick. The interval itself is registered once from main. */
-  tickTimer() {
+  /** Advance by elapsed wall seconds, including delayed background callbacks. */
+  tickTimer(elapsed = 1) {
     const t = this.timer;
     if (!t.running) return;
     if (t.mode === "stopwatch") {
-      t.remaining++;
+      t.remaining += elapsed;
     } else {
-      t.remaining--;
+      t.remaining -= elapsed;
       if (t.remaining <= 0) {
         t.remaining = 0;
         t.running = false;
@@ -577,7 +633,28 @@ try {
   /* no storage, no saved tasks */
 }
 
-/** The one interval behind focus, break and stopwatch — registered once from main. */
+let timerTickStarted = false;
+
+/** One clock while running; stopped/reset timers own no interval. */
 export function startTimerTick() {
-  window.setInterval(() => State.tickTimer(), 1000);
+  if (timerTickStarted) return;
+  timerTickStarted = true;
+  let interval: number | null = null;
+  let lastTick = 0;
+  const sync = () => {
+    if (!State.timer.running) {
+      if (interval !== null) window.clearInterval(interval);
+      interval = null;
+    } else if (interval === null) {
+      lastTick = performance.now();
+      interval = window.setInterval(() => {
+        const elapsed = Math.floor((performance.now() - lastTick) / 1000);
+        if (elapsed < 1) return;
+        lastTick += elapsed * 1000;
+        State.tickTimer(elapsed);
+      }, 1000);
+    }
+  };
+  State.subscribe(sync);
+  sync();
 }

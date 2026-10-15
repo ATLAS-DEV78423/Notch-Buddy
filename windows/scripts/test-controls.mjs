@@ -9,6 +9,8 @@ import { readFileSync } from "node:fs";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const domSource = readFileSync(resolve(root, "src/views/dom.ts"), "utf8");
 const viewsSource = readFileSync(resolve(root, "src/views/views.ts"), "utf8");
+const headerSource = readFileSync(resolve(root, "src/views/header.ts"), "utf8");
+const viewUiSource = `${viewsSource}\n${headerSource}`;
 const chatSource = readFileSync(resolve(root, "src/views/chat.ts"), "utf8");
 const integrationsSource = readFileSync(resolve(root, "src/views/integrations.ts"), "utf8");
 const settingsSource = readFileSync(resolve(root, "src/settings/main.ts"), "utf8");
@@ -29,12 +31,14 @@ const result = await build({
     export { captureStep, stepKind, diffForStep, diffLines, diffStat, modelFromPayload, thinkingFromPayload } from "./src/core/steps";
   `, resolveDir: root },
   bundle: true, platform: "node", format: "esm", write: false,
-  plugins: [{ name: "test-view-exports", setup(build) {
-    build.onLoad({ filter: /[/\\]views[/\\]views\.ts$/ }, () => ({
-      contents: viewsSource + "\nexport { buildMediaView, buildControlCenter, buildSettings, buildDashboardView, buildWeatherView };",
-      loader: "ts", resolveDir: resolve(root, "src/views"),
-    }));
-  } }],
+   plugins: [{ name: "test-view-exports", setup(build) {
+     build.onResolve({ filter: /\.css$/ }, (args) => ({ path: args.path, namespace: "css-stub" }));
+     build.onLoad({ filter: /.*/, namespace: "css-stub" }, () => ({ contents: "", loader: "js" }));
+     build.onLoad({ filter: /[/\\]views[/\\]views\.ts$/ }, () => ({
+       contents: viewsSource + "\nexport { buildMediaView, buildControlCenter, buildSettings, buildDashboardView, buildWeatherView };",
+       loader: "ts", resolveDir: resolve(root, "src/views"),
+     }));
+   } }],
 });
 const app = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const { State, BotEngine, startPowerWatch, setPrimaryEngine, setCondition, react, tickReactions, batteryTier, setPrefersReduced, captureStep, stepKind, diffForStep, diffLines, diffStat, modelFromPayload, thinkingFromPayload } = app;
@@ -324,13 +328,13 @@ test("dashboard widgets and agent pills are semantic keyboard controls", () => {
 });
 
 test("icon-only and chat actions expose accessible names", () => {
-  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Overview"/s);
-  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Ask"/s);
-  assert.match(viewsSource, /class: "tab",\s*"aria-label": "Drop"/s);
-  assert.match(viewsSource, /class: "icon-btn jump",\s*"aria-label": "Open"/s);
-  assert.match(viewsSource, /class: "mc-btn",\s*"aria-label": "Previous"/s);
-  assert.match(viewsSource, /class: "mc-btn mc-play",\s*"aria-label": "Play"/s);
-  assert.match(viewsSource, /class: "mc-btn",\s*"aria-label": "Next"/s);
+  assert.match(viewUiSource, /class: "tab",\s*"aria-label": "Agents"/s);
+  assert.match(viewUiSource, /class: "tab",\s*"aria-label": "Ask"/s);
+  assert.match(viewUiSource, /class: "tab",\s*"aria-label": "Drop"/s);
+  assert.match(viewUiSource, /class: "icon-btn jump",\s*"aria-label": "Open"/s);
+  assert.match(viewUiSource, /class: "mc-btn",\s*"aria-label": "Previous"/s);
+  assert.match(viewUiSource, /class: "mc-btn mc-play",\s*"aria-label": "Play"/s);
+  assert.match(viewUiSource, /class: "mc-btn",\s*"aria-label": "Next"/s);
   assert.match(chatSource, /class: "send-btn"[^}]*"aria-label": "Send"/s);
   assert.match(integrationsSource, /class: "int-more",\s*"aria-label": "Details"/s);
 });
@@ -532,9 +536,9 @@ test("runtime media/weather text and settings state stay safe and current", () =
 }));
 
 test("header sound, settings-window switch and task deletion expose updated names/states", () => {
-  assert.match(viewsSource, /soundBtn\.setAttribute\("aria-label", State\.settings\.soundEnabled \? "Mute sounds" : "Unmute sounds"\)/);
-  assert.match(viewsSource, /soundBtn\.setAttribute\("aria-pressed", String\(!State\.settings\.soundEnabled\)\)/);
-  assert.match(viewsSource, /class: "task-del",\s*"aria-label": `Delete task: \$\{safeText\(text\)\}`/s);
+  assert.match(headerSource, /soundBtn\.setAttribute\("aria-label", State\.settings\.soundEnabled \? "Mute sounds" : "Unmute sounds"\)/);
+  assert.match(headerSource, /soundBtn\.setAttribute\("aria-pressed", String\(!State\.settings\.soundEnabled\)\)/);
+  assert.match(viewUiSource, /class: "task-del",\s*"aria-label": `Delete task: \$\{safeText\(text\)\}`/s);
   assert.match(settingsSource, /el\.setAttribute\("aria-checked", String\(next\)\)/);
   assert.match(settingsSource, /toggle\(settings\.soundEnabled, [^\n]*, "Sound"\)/);
   assert.match(styleSource, /\.send-btn \{[^}]*cursor: pointer;/s);
